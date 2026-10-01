@@ -26,6 +26,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
   The running blocks are outlined in yellow.
 - **Calibration:** three short test programs to run on the real robot (drive 5 rotations, spin 2 rotations, drive 2 seconds). Enter what you measured and the simulator uses your robot's real wheel size, wheel spacing and top speed. An optional speed-up time makes the robot accelerate instead of jumping to full speed.
 - **What to do on each model:** a tag above each model says how the simulator scores it (PUSH, PRESS, HOLD, DON'T TOUCH, BRING K, BRING SEEDS). Tags turn green when done and red when a habitat is disturbed. Tap a model to see its mission, the scoring items and the points. The tags can be turned off.
+- **Mat look:** the official mat photo (default) or a plain green drawing.
 - **Approach sides (coach setting):** in a model's card, a coach can require pushes to come from one side of the mat (north, south, east or west, within 55°). A push from another side does nothing, and the log only says "touched, but nothing happened". Kids see arrows only if "Show approach directions" is turned on. Settings are saved on the device and travel in share links. No sides are set by default; confirmed sides go in `DEFAULT_APPROACH` in `src/field.js`.
 - **Missions 13–15 docks:** choose which model sits on the mine, farm and city docks under the mat (or on the Score tab).
 - **Mission models that react (simplified):** pushing or pressing the right model completes it. Examples: the M01 pilot launches the drone, M02 drops seeds you can collect, M03's flag goes down, a lift arm pressing M12 raises the cane, and touching an M10 habitat loses those points. The keystone species counts for M13 when it's pushed into the M13 dock, and seeds count for M14 in the M14 dock. Choose which dock (mine, farm, city) holds M13, M14 and M15. The score sheet can fill these in automatically.
@@ -98,6 +99,7 @@ The block editor is [Blockly](https://github.com/google/blockly) 11.2.2 (Apache 
 
 - Mission names and point values come from the official 2026–27 BioGlow Robot Game Rulebook. Check the FIRST Challenge Updates for changes during the season.
 - Model positions were traced from the public field wireframe and may be off by a few centimetres. Fix them in `src/field.js`.
+- The mat photo (`assets/mat.jpg`) is cropped from the field photo in the official Robot Game Rulebook. It is © FIRST and the LEGO Group and is used here only as a practice backdrop. Choose **Plain** under the mat for the drawn version.
 - Sensor readings are simplified. The mat is treated as green, home as white, the home borders as red and blue, and the printed lines as black.
 
 FIRST®, FIRST® LEGO® League and BIOGLOW™ are trademarks of FIRST and the LEGO Group. LEGO®, SPIKE™ and LEGO Education are trademarks of the LEGO Group. This project is not affiliated with or endorsed by either.

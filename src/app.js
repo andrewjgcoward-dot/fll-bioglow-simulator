@@ -38,13 +38,14 @@ const state = {
   score: saved.score || {}, tokens: saved.tokens ?? 6, inspection: !!saved.inspection,
   grid: saved.grid ?? true, scale: 1,
   autoScore: saved.autoScore ?? true, docks: Object.assign({}, DEFAULT_DOCKS, saved.docks), hints: saved.hints ?? true,
-  approach: Object.assign({}, DEFAULT_APPROACH, saved.approach), showSides: !!saved.showSides
+  approach: Object.assign({}, DEFAULT_APPROACH, saved.approach), showSides: !!saved.showSides,
+  mat: saved.mat === 'plain' ? 'plain' : 'photo'
 };
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
       program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
-      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks, hints: state.hints, approach: state.approach, showSides: state.showSides
+      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks, hints: state.hints, approach: state.approach, showSides: state.showSides, mat: state.mat
     }));
   } catch { /* storage unavailable: keep working without it */ }
 }
@@ -117,15 +118,19 @@ const refs = {};
 
 function buildField() {
   field.innerHTML = '';
-  svgEl('rect', { x: 0, y: 0, width: FW, height: FH, fill: '#2D5A3B' }, field);
-  svgEl('path', { d: `M0 ${FH} L0 ${FH - HOME_R} A${HOME_R} ${HOME_R} 0 0 1 ${HOME_R} ${FH} Z`, fill: '#F3F1EA', stroke: '#D9342B', 'stroke-width': 8 }, field);
-  svgEl('path', { d: `M${FW} ${FH} L${FW} ${FH - HOME_R} A${HOME_R} ${HOME_R} 0 0 0 ${FW - HOME_R} ${FH} Z`, fill: '#F3F1EA', stroke: '#1E6FD9', 'stroke-width': 8 }, field);
+  // Two looks: the official mat photo (cropped to the play area), or plain green with the home areas and lines drawn.
+  refs.photo = svgEl('image', { href: 'assets/mat.jpg', x: 0, y: 0, width: FW, height: FH, preserveAspectRatio: 'none' }, field);
+  refs.plain = svgEl('g', {}, field);
+  svgEl('rect', { x: 0, y: 0, width: FW, height: FH, fill: '#2D5A3B' }, refs.plain);
+  svgEl('path', { d: `M0 ${FH} L0 ${FH - HOME_R} A${HOME_R} ${HOME_R} 0 0 1 ${HOME_R} ${FH} Z`, fill: '#F3F1EA', stroke: '#D9342B', 'stroke-width': 8 }, refs.plain);
+  svgEl('path', { d: `M${FW} ${FH} L${FW} ${FH - HOME_R} A${HOME_R} ${HOME_R} 0 0 0 ${FW - HOME_R} ${FH} Z`, fill: '#F3F1EA', stroke: '#1E6FD9', 'stroke-width': 8 }, refs.plain);
   refs.grid = svgEl('g', { 'pointer-events': 'none' }, field);
   for (let x = 200; x < FW; x += 200) svgEl('line', { x1: x, y1: 0, x2: x, y2: FH, stroke: 'rgba(255,255,255,.18)', 'stroke-width': 2 }, refs.grid);
   for (let y = 200; y < FH; y += 200) svgEl('line', { x1: 0, y1: Y(y), x2: FW, y2: Y(y), stroke: 'rgba(255,255,255,.18)', 'stroke-width': 2 }, refs.grid);
   'ABCDEFGHIJ'.split('').forEach((c, i) => { const t = svgEl('text', { x: i * 200 + 100, y: FH - 14, 'text-anchor': 'middle', class: 'gl' }, refs.grid); t.textContent = c; });
   for (let r = 1; r <= 6; r++) { const t = svgEl('text', { x: 18, y: Y(r === 6 ? 1071 : r * 200 - 100) + 8, 'text-anchor': 'middle', class: 'gl' }, refs.grid); t.textContent = r; }
-  for (const L of LINES) svgEl('polyline', { points: L.map(([x, y]) => `${x},${Y(y)}`).join(' '), fill: 'none', stroke: '#0A0A0A', 'stroke-width': 20, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, field);
+  for (const L of LINES) svgEl('polyline', { points: L.map(([x, y]) => `${x},${Y(y)}`).join(' '), fill: 'none', stroke: '#0A0A0A', 'stroke-width': 20, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, refs.plain);
+  setMat(state.mat);
   refs.objs = svgEl('g', {}, field); refs.objEls = [];
   refs.hints = svgEl('g', { 'pointer-events': 'none' }, field); refs.hintKey = '';
   refs.trail = svgEl('polyline', { fill: 'none', stroke: '#8FE3B0', 'stroke-width': 6, 'stroke-opacity': .7, 'stroke-dasharray': '2 10', 'stroke-linecap': 'round', 'pointer-events': 'none' }, field);
@@ -324,6 +329,14 @@ function renderDocks() {
 $('dock-selects').addEventListener('change', (e) => { if (e.target.dataset.dock) setDock(e.target.dataset.dock, e.target.value); });
 $('hints').onchange = (e) => { state.hints = e.target.checked; save(); drawField(); };
 $('sides').onchange = (e) => { state.showSides = e.target.checked; save(); drawField(); };
+
+function setMat(look) {
+  state.mat = look;
+  refs.photo.style.display = look === 'photo' ? '' : 'none';
+  refs.plain.style.display = look === 'photo' ? 'none' : '';
+  document.querySelectorAll('#mat-style button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mat === look)));
+}
+$('mat-style').addEventListener('click', (e) => { const b = e.target.closest('[data-mat]'); if (b) { setMat(b.dataset.mat); save(); } });
 
 function renderLog() { $('log').innerHTML = sim.logLines.map(l => `<div>${esc(l)}</div>`).join(''); }
 
