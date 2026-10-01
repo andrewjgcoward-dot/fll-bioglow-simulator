@@ -1,7 +1,7 @@
 // SPIKE-style drag-and-drop block editor, built on Blockly (loaded as the global `Blockly`)
 // with the Scratch-like "zelos" renderer. Block shapes come from SPEC in blocks.js.
 
-import { SPEC, PORTS, IMAGES, SOUNDS, walkProgram } from './blocks.js';
+import { SPEC, PORTS, IMAGES, SOUNDS, COLORS, walkProgram } from './blocks.js';
 
 const BLOCKLY_VERSION = '11.2.2';
 
@@ -30,6 +30,18 @@ export function registerNames(prog) {
   for (const name of Object.keys(prog.sounds || {})) sounds.add(name);
 }
 
+// Color menus show a dot in the color next to its name, like the SPIKE App. Each option is a small
+// picture (dot + name on a white pill) so it reads the same in the menu and on the block.
+const DOT = { black: '#111111', violet: '#7A4FD6', blue: '#1E6FD9', azure: '#3FA9F5', green: '#2F8F4E', yellow: '#E8C21E', red: '#D9342B', white: '#FFFFFF', none: 'none' };
+function colorOption(name) {
+  const w = 30 + name.length * 8, h = 22;
+  const dot = name === 'none'
+    ? '<circle cx="12" cy="11" r="6.5" fill="#fff" stroke="#8A9590" stroke-width="1.5" stroke-dasharray="2.5 2"/>'
+    : `<circle cx="12" cy="11" r="6.5" fill="${DOT[name]}" stroke="#4A5550" stroke-width="1.2"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect x="0.5" y="0.5" width="${w - 1}" height="${h - 1}" rx="11" fill="#fff" stroke="#D5DAD7"/>${dot}<text x="23" y="15.5" font-family="Helvetica,Arial,sans-serif" font-size="13" font-weight="700" fill="#2B3530">${name}</text></svg>`;
+  return [{ src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg), width: w, height: h, alt: name }, name];
+}
+
 function argFor(key, d) {
   if (!d) return { type: 'field_label_serializable', name: key, text: '' };
   if (d.kind === 'var') return { type: 'field_variable', name: key, variable: 'my variable', variableTypes: [''], defaultType: '' };
@@ -39,6 +51,7 @@ function argFor(key, d) {
   if (d.kind === 'matrix') return { type: 'field_matrix', name: key, value: IMAGES.heart };
   if (d.kind === 'menu' || d.kind === 'field') {
     if (d.ports) return { type: 'field_dropdown', name: key, options: () => PORTS.concat([...extraPorts]).map(p => [p, p]) };
+    if (d.opts === COLORS) return { type: 'field_dropdown', name: key, options: COLORS.map(colorOption) };
     return { type: 'field_dropdown', name: key, options: d.opts.map(o => [o, o]) };
   }
   if (d.kind === 'bool') return { type: 'input_value', name: key, check: 'Boolean' };
