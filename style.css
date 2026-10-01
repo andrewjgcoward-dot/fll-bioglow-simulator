@@ -134,6 +134,17 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 .start label { display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
 .start input { width: 80px; min-height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); }
 .start .muted { flex-grow: 1; min-width: 160px; align-self: center; }
+#docks-row { align-items: center; }
+#docks-row select { min-height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); }
+#docks-row .check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+#docks-row .check input { width: 20px; height: 20px; min-height: 0; padding: 0; accent-color: var(--accent); }
+.mission-card { padding: 12px 14px; border-radius: 12px; background: var(--panel); border: 1px solid #6B5A3A; font-size: 14px; }
+.mission-card .mc-head { display: flex; gap: 8px; align-items: center; }
+.mission-card .mc-head strong { flex-grow: 1; }
+.mission-card .mc-do { margin: 6px 0; color: var(--warn); }
+.mission-card ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); }
+.mission-card li.done { color: var(--accent); }
+.mission-card .mid { margin-right: 4px; }
 
 .log { padding: 10px 12px; border-radius: 12px; background: #080D0B; border: 1px solid var(--line); font-family: var(--mono); font-size: 12px; line-height: 1.6; color: #A9C2B6; min-height: 72px; }
 .foot { max-width: 1680px; margin: 24px auto 0; font-size: 12px; color: var(--muted); line-height: 1.6; }

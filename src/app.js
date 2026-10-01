@@ -1,4 +1,4 @@
-import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, DOCKS, DEFAULT_DOCKS, AUTO_KEYS } from './field.js';
+import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, DOCKS, DEFAULT_DOCKS, AUTO_KEYS, MECHANISMS } from './field.js';
 import { PORTS, PAIRS, DEMO, flatToAst, emptyProgram } from './blocks.js';
 import { programToJson, jsonToProgram } from './blocks-json.js';
 import { createWorkspace, registerNames } from './workspace.js';
@@ -37,13 +37,13 @@ const state = {
   pieces: Array.isArray(saved.pieces) ? saved.pieces : structuredClone(LOOSE_DEFAULTS),
   score: saved.score || {}, tokens: saved.tokens ?? 6, inspection: !!saved.inspection,
   grid: saved.grid ?? true, scale: 1,
-  autoScore: saved.autoScore ?? true, docks: Object.assign({}, DEFAULT_DOCKS, saved.docks)
+  autoScore: saved.autoScore ?? true, docks: Object.assign({}, DEFAULT_DOCKS, saved.docks), hints: saved.hints ?? true
 };
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
       program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
-      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks
+      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks, hints: state.hints
     }));
   } catch { /* storage unavailable: keep working without it */ }
 }
@@ -126,12 +126,13 @@ function buildField() {
   for (let r = 1; r <= 6; r++) { const t = svgEl('text', { x: 18, y: Y(r === 6 ? 1071 : r * 200 - 100) + 8, 'text-anchor': 'middle', class: 'gl' }, refs.grid); t.textContent = r; }
   for (const L of LINES) svgEl('polyline', { points: L.map(([x, y]) => `${x},${Y(y)}`).join(' '), fill: 'none', stroke: '#0A0A0A', 'stroke-width': 20, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, field);
   refs.objs = svgEl('g', {}, field); refs.objEls = [];
+  refs.hints = svgEl('g', { 'pointer-events': 'none' }, field); refs.hintKey = '';
   refs.trail = svgEl('polyline', { fill: 'none', stroke: '#8FE3B0', 'stroke-width': 6, 'stroke-opacity': .7, 'stroke-dasharray': '2 10', 'stroke-linecap': 'round', 'pointer-events': 'none' }, field);
   refs.seen = svgEl('g', { 'pointer-events': 'none' }, field); refs.seenPaths = {};
   refs.beam = svgEl('line',{ stroke: 'rgba(143,227,176,.6)', 'stroke-width': 4, 'pointer-events': 'none' }, field);
   refs.robot = svgEl('g', { 'pointer-events': 'none' }, field);
   const style = svgEl('style', {}, field);
-  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A} .arm-l{font:700 20px "JetBrains Mono",monospace;fill:#fff}';
+  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A} .arm-l{font:700 20px "JetBrains Mono",monospace;fill:#fff} .hint-l{font:700 22px "JetBrains Mono",monospace}';
 }
 
 // Mission models, docks and loose pieces come from the simulation, since they can move.
@@ -171,6 +172,7 @@ function drawField() {
   const p = sim.pose, s = sim.sens;
   syncObjects();
   syncMission();
+  drawHints();
   refs.robot.setAttribute('transform', `translate(${p.x} ${Y(p.y)}) rotate(${p.h})`);
   drawRobot(refs.robot, state.cfg, sim.arms, { stroke: sim.hit ? '#F2A6A0' : sim.running ? '#8FE3B0' : '#1A1A1A', colorFill: SWATCH[s.color] || '#5B7066' });
   refs.trail.setAttribute('points', sim.trail.map(([x, y]) => `${x.toFixed(0)},${Y(y).toFixed(0)}`).join(' '));
@@ -207,6 +209,94 @@ function drawField() {
     lastLit = lit;
   }
 }
+
+// ---------- what to do on each model ----------
+
+const HOW = {
+  push: ['PUSH', 'Drive the robot into it, or swing a sweep arm into it.'],
+  press: ['PRESS', 'Bring a lift arm down on top of it.'],
+  touch: ['DON’T TOUCH', 'Leave it alone: it scores only if nothing touches it.']
+};
+const missionIds = (o) => o.dock ? [o.holds] : (o.n || '').split(' ').filter(Boolean).map(n => 'M' + n);
+
+// The simulated actions on a model or dock: [{ label, tip, done, bad }].
+function actionsOf(o) {
+  if (o.loose) return o.id === 'keystone' ? [{ label: 'TO DOCK 13', tip: 'Push the keystone species into the M13 dock.', done: sim.mission.m13 }] : [];
+  const acts = [];
+  MECHANISMS.forEach((m, i) => {
+    if (o.dock ? m.dock !== o.holds : m.model !== o.key) return;
+    const [label, tip] = HOW[m.how];
+    acts.push({ label: m.hold ? `HOLD ${m.hold} S` : label, tip: m.hold ? `Keep pushing for ${m.hold} second${m.hold > 1 ? 's' : ''}.` : tip,
+      result: m.says.replace(/^M\d+: /, ''), done: m.how !== 'touch' && sim.mechDone.has(i), bad: m.how === 'touch' && sim.mechDone.has(i) });
+  });
+  if (o.dock && o.holds === 'M13') acts.push({ label: 'BRING K', tip: 'Push the keystone species (K) into this dock.', done: sim.mission.m13 });
+  if (o.dock && o.holds === 'M14') acts.push({ label: 'BRING SEEDS' + (sim.mission.m14a ? ' ×' + sim.mission.m14a : ''), tip: 'Push seeds into this dock. M02 drops seeds when you push it.', done: sim.mission.m14a > 0 });
+  return acts;
+}
+
+// A tag above each model saying how to score it; green when done, red when disturbed.
+function drawHints() {
+  const show = state.hints;
+  const objs = show ? sim.objects.filter(o => actionsOf(o).length) : [];
+  const key = show + '|' + objs.map(o => [o.key || o.id, Math.round(o.x), Math.round(o.y), actionsOf(o).map(a => a.label + a.done + a.bad)].join()).join(';');
+  if (key === refs.hintKey) return;
+  refs.hintKey = key; refs.hints.textContent = '';
+  for (const o of objs) {
+    const acts = actionsOf(o);
+    const text = acts.map(a => (a.done ? '✓ ' : a.bad ? '✗ ' : '') + a.label).join(' · ');
+    const bad = acts.some(a => a.bad), done = !bad && acts.every(a => a.done);
+    const w = text.length * 13.2 + 20, h = 34;
+    const reach = Math.hypot(o.w, o.h) / 2 + 24;
+    const below = o.y + reach + h > FH;
+    const cx = Math.max(w / 2 + 4, Math.min(FW - w / 2 - 4, o.x));
+    const cy = Y(below ? o.y - reach : o.y + reach);
+    const g = svgEl('g', { transform: `translate(${cx.toFixed(0)} ${cy.toFixed(0)})` }, refs.hints);
+    svgEl('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: 17, fill: bad ? '#9B2C24' : done ? '#1E7A45' : '#3B2F1E', stroke: bad ? '#F2A6A0' : done ? '#8FE3B0' : '#F2C48A', 'stroke-width': 3, opacity: .95 }, g);
+    const t = svgEl('text', { y: 8, 'text-anchor': 'middle', class: 'hint-l', fill: bad ? '#FFE3E0' : done ? '#E6FFF0' : '#F2C48A' }, g);
+    t.textContent = text;
+  }
+}
+
+// Mission details for a tapped model or dock.
+function showMissionCard(o) {
+  const card = $('mission-card');
+  const ids = missionIds(o);
+  const ms = MISSIONS.filter(m => ids.includes(m.id));
+  const acts = actionsOf(o);
+  const dock = o.dock ? DOCKS.find(d => d.key === o.key) : null;
+  card.innerHTML = `
+    <div class="mc-head"><strong>${esc(dock ? dock.name[0].toUpperCase() + dock.name.slice(1) + ' — holds ' + o.holds : o.name)}</strong>
+      <button type="button" class="btn small" data-close aria-label="Close">✕</button></div>
+    ${acts.map(a => `<div class="mc-do">${a.done ? '✓ ' : a.bad ? '✗ ' : ''}<b>${esc(a.label)}</b>: ${esc(a.tip)}${a.result ? ' <span class="muted">→ ' + esc(a.result) + '</span>' : ''}</div>`).join('')
+      || '<div class="mc-do">The simulator doesn’t model this one yet: score it yourself on the Score tab.</div>'}
+    ${ms.map(m => `<div><span class="mid">${m.id}</span><b>${esc(m.name)}</b> · ${missionPoints(m, state.score)} pts now<ul>${m.items.map(it => `<li class="${state.score[it.k] ? 'done' : ''}">${esc(it.label)} — ${it.zero ? '×0' : it.count ? it.pts + ' each' : it.pts}</li>`).join('')}</ul></div>`).join('')}
+    ${dock ? '<div class="fine">Change which model sits here under “Missions 13–15” below the mat.</div>' : ''}
+    <div class="fine">Simplified: the real model has levers and hinges; the simulator only checks how the robot touches it.</div>`;
+  card.hidden = false;
+}
+$('mission-card').addEventListener('click', (e) => { if (e.target.closest('[data-close]')) $('mission-card').hidden = true; });
+
+// ---------- missions 13-15 docks ----------
+
+const DOCK_MODELS = ['M13', 'M14', 'M15'];
+const missionName = (id) => (MISSIONS.find(m => m.id === id) || {}).name || id;
+
+// Each model sits on one dock: choosing a model swaps it with the dock that had it.
+function setDock(dockKey, model) {
+  const other = Object.keys(state.docks).find(k => state.docks[k] === model);
+  if (other) state.docks[other] = state.docks[dockKey];
+  state.docks[dockKey] = model;
+  if (!sim.running) { sim.reset(); drawField(); }
+  save(); renderDocks(); renderScore();
+}
+
+function renderDocks() {
+  $('dock-selects').innerHTML = DOCKS.map(d => `<label>${esc(d.name[0].toUpperCase() + d.name.slice(1))}
+    <select data-dock="${d.key}">${DOCK_MODELS.map(m => `<option value="${m}"${state.docks[d.key] === m ? ' selected' : ''}>${m} ${esc(missionName(m))}</option>`).join('')}</select></label>`).join('');
+  $('hints').checked = state.hints;
+}
+$('dock-selects').addEventListener('change', (e) => { if (e.target.dataset.dock) setDock(e.target.dataset.dock, e.target.value); });
+$('hints').onchange = (e) => { state.hints = e.target.checked; save(); drawField(); };
 
 function renderLog() { $('log').innerHTML = sim.logLines.map(l => `<div>${esc(l)}</div>`).join(''); }
 
@@ -324,13 +414,7 @@ $('tab-score').addEventListener('change', (e) => {
   const t = e.target;
   if (t.hasAttribute('data-insp')) state.inspection = t.checked;
   else if (t.hasAttribute('data-auto')) { state.autoScore = t.checked; lastMission = ''; syncMission(); }
-  else if (t.dataset.dock) {
-    // Each model sits on one dock: swap with whichever dock had the chosen model.
-    const other = Object.keys(state.docks).find(k => state.docks[k] === t.value);
-    if (other) state.docks[other] = state.docks[t.dataset.dock];
-    state.docks[t.dataset.dock] = t.value;
-    if (!sim.running) { sim.reset(); drawField(); }
-  }
+  else if (t.dataset.dock) { setDock(t.dataset.dock, t.value); return; }
   else if (t.dataset.chk) {
     if (t.checked && t.dataset.group) for (const m of MISSIONS) for (const it of m.items) if (it.group === t.dataset.group) state.score[it.k] = false;
     state.score[t.dataset.chk] = t.checked;
@@ -602,13 +686,15 @@ $('sy').onchange = (e) => { const v = parseFloat(e.target.value); if (isFinite(v
 $('sh').onchange = (e) => { const v = parseFloat(e.target.value); if (isFinite(v)) setStart({ h: v }); };
 const toMm = (e) => { const r = field.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * FW, (1 - (e.clientY - r.top) / r.height) * FH]; };
 
-// Drag loose pieces (any time the robot isn't running); a plain click places the robot.
-let drag = null, dragged = false;
+// Drag loose pieces (any time the robot isn't running); tap a model for its mission; a plain click places the robot.
+let drag = null, dragged = false, tapped = null;
 field.addEventListener('pointerdown', (e) => {
-  if (sim.running) return;
   const pt = toMm(e);
+  tapped = sim.objects.slice().reverse().find(o => !o.loose && inside(pt, o)) || null;
+  if (sim.running) return;
   const o = sim.objects.slice().reverse().find(o => o.loose && inside(pt, o));
   if (!o) return;
+  tapped = null;
   drag = { o, dx: o.x - pt[0], dy: o.y - pt[1] }; dragged = true; // a tap on a piece never moves the robot
   try { field.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
   e.preventDefault();
@@ -626,6 +712,7 @@ field.addEventListener('pointerup', endDrag);
 field.addEventListener('pointercancel', endDrag);
 field.addEventListener('click', (e) => {
   if (dragged) { dragged = false; return; }
+  if (tapped) { showMissionCard(tapped); tapped = null; return; }
   if (sim.running) return;
   const [x, y] = toMm(e);
   setStart({ x: Math.round(x), y: Math.round(y) });
@@ -844,7 +931,7 @@ let lastDraw = 0;
 function draw() { dirty = false; lastDraw = performance.now(); drawField(); }
 function frame() { if (dirty) draw(); requestAnimationFrame(frame); }
 
-buildField(); renderStart(); initCode(); renderScore(); renderRobot(); renderLog(); drawField();
+buildField(); renderStart(); renderDocks(); initCode(); renderScore(); renderRobot(); renderLog(); drawField();
 openShared();
 requestAnimationFrame(frame);
 // Save the latest blocks when the page is hidden or closed.

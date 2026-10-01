@@ -25,6 +25,8 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 
   The running blocks are outlined in yellow.
 - **Calibration:** three short test programs to run on the real robot (drive 5 rotations, spin 2 rotations, drive 2 seconds). Enter what you measured and the simulator uses your robot's real wheel size, wheel spacing and top speed. An optional speed-up time makes the robot accelerate instead of jumping to full speed.
+- **What to do on each model:** a tag above each model says how the simulator scores it (PUSH, PRESS, HOLD, DON'T TOUCH, BRING K, BRING SEEDS). Tags turn green when done and red when a habitat is disturbed. Tap a model to see its mission, the scoring items and the points. The tags can be turned off.
+- **Missions 13–15 docks:** choose which model sits on the mine, farm and city docks under the mat (or on the Score tab).
 - **Mission models that react (simplified):** pushing or pressing the right model completes it. Examples: the M01 pilot launches the drone, M02 drops seeds you can collect, M03's flag goes down, a lift arm pressing M12 raises the cane, and touching an M10 habitat loses those points. The keystone species counts for M13 when it's pushed into the M13 dock, and seeds count for M14 in the M14 dock. Choose which dock (mine, farm, city) holds M13, M14 and M15. The score sheet can fill these in automatically.
 - **SPIKE files:**
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
