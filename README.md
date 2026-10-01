@@ -14,11 +14,13 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **Blocks:** a drag-and-drop editor that looks and works like the SPIKE App, with the same ten categories:
   - **Motors:** run for, go to position, start, stop, set speed, set relative position, position and relative position.
   - **Movement:** move, steer, tank (left/right %), start/stop moving, movement speed, movement motors, and "1 motor rotation = … cm".
-  - **Light, Sound and Events:** write, beep, and "when program starts". Several start stacks run at the same time, like on the hub.
+  - **Light:** turn on an image (with a 5×5 pixel picker like SPIKE's), turn on for a time, write, turn off pixels, set brightness, set a pixel, and the center button light. The page shows the hub's light matrix live.
+  - **Sound:** play sound (until done), start sound, beep, start beep, stop all sounds, set/change volume, and the volume reporter. Beeps play as real tones; library sounds play a short stand-in chirp for their real length. A Sound button turns audio off.
+  - **Events:** when program starts, when color, when pressed, when distance, when the hub's left/right button is pressed or released, when timer, when a condition turns true, when I receive, broadcast, and broadcast and wait. Several start stacks run at the same time, like on the hub. The hub's left and right buttons on the page work while a program runs.
   - **Control:** wait, repeat, forever, if, if-else, wait until, repeat until and stop.
   - **Sensors:** is color, reflection, distance and pressed checks; color, reflected light, distance, yaw/pitch/roll, and timer reporters; reset yaw and reset timer.
   - **Operators:** + − × ÷, pick random, < > =, and/or/not, join, letter of, length, contains, mod, round, and math functions.
-  - **Variables:** "Make a Variable", plus set, change and the variable reporter.
+  - **Variables:** "Make a Variable" and "Make a List", plus set, change, add, delete, insert, replace, item, item #, length, contains, and the variable and list reporters. The page shows their current values.
   - **My Blocks:** "Make a Block", with number and true/false inputs.
 
   The running blocks are outlined in yellow.
@@ -33,7 +35,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 
 - Mission mechanisms (levers, lifts, flips) don't react yet: an arm can press on a model, but the model doesn't change. Arms can push pieces but not pick them up.
 - Arms are limited to straight front/back/left/right directions, with no odd angles, linkages or multi-joint arms.
-- Not simulated yet: SPIKE Python projects, lists, broadcasts, light-matrix images, sounds other than beep, and start blocks other than "when program starts" (such as "when color").
+- Not simulated yet: SPIKE Python projects; tilt, shake and orientation start blocks (the simulated robot never tilts); the real sound recordings (a stand-in plays instead).
 - Sensor values are simplified. The color sensor reports SPIKE color numbers and rough reflected-light values for the mat. The distance reporter gives 200 when nothing is in range; check that against your real sensor. Pitch and roll are always 0. The force sensor counts as pressed when the front of the robot is pushing on something.
 - Exported files re-import here, but opening them in the SPIKE App hasn't been confirmed yet.
 - There is no live connection to the SPIKE App. Moving programs with files works everywhere. A desktop "virtual hub" helper might be possible later.

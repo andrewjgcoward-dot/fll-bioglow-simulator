@@ -1,12 +1,12 @@
 import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore } from './field.js';
 import { PORTS, PAIRS, DEMO, flatToAst, emptyProgram } from './blocks.js';
 import { programToJson, jsonToProgram } from './blocks-json.js';
-import { createWorkspace, registerPorts } from './workspace.js';
+import { createWorkspace, registerNames } from './workspace.js';
 import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside } from './sim.js';
 import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 
-const SWATCH = { black: '#111111', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
+const SWATCH = { black: '#111111', violet: '#7A4FD6', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
 const demoProgram = () => DEMO();
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,6 +28,7 @@ const saved = load();
 const state = {
   tab: 'code',
   program: saved.program && saved.program.stacks ? saved.program : demoProgram(),
+  sounds: saved.sounds || {}, soundOn: saved.soundOn ?? true,
   ws: saved.ws || null,
   cfg: normalizeConfig(saved.cfg), sel: 'color',
   start: Object.assign({ x: 240, y: 240, h: 0 }, saved.start),
@@ -38,7 +39,7 @@ const state = {
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
-      program: state.program, ws: state.ws, cfg: state.cfg, start: state.start, pieces: state.pieces,
+      program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
       score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid
     }));
   } catch { /* storage unavailable: keep working without it */ }
@@ -47,6 +48,58 @@ function save() {
 const sim = new Sim(state.cfg, state.start, state.pieces);
 sim.cfg = state.cfg; // share the object so Robot tab edits apply immediately
 sim.onLog = () => renderLog();
+
+// ---------- hub: light matrix, center light, buttons, variables, sound ----------
+
+const matrixCells = [];
+for (let i = 0; i < 25; i++) { const c = document.createElement('span'); $('r-matrix').appendChild(c); matrixCells.push(c); }
+let lastVars = '';
+function drawHub() {
+  sim.matrix.forEach((b, i) => { matrixCells[i].style.background = b > 0 ? `rgba(255, 244, 214, ${0.25 + 0.75 * b / 100})` : '#2C2C2C'; });
+  $('r-center').style.background = SWATCH[sim.centerLight] || '#F5F5F0';
+  const lines = Object.entries(sim.vars).map(([k, v]) => `${k} = ${typeof v === 'number' ? +v.toFixed(3) : v}`)
+    .concat(Object.entries(sim.lists).map(([k, l]) => `${k}: [${l.slice(0, 20).join(', ')}${l.length > 20 ? ', …' : ''}]`));
+  const text = lines.join('\n');
+  if (text !== lastVars) { lastVars = text; $('r-vars').textContent = text; $('r-vars-card').hidden = !text; }
+}
+for (const side of ['left', 'right']) {
+  const b = $('hub-' + side);
+  const set = (down) => { sim.setButton(side, down); b.classList.toggle('down', down); };
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); set(true); });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => set(false));
+  b.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); set(true); } });
+  b.addEventListener('keyup', () => set(false));
+}
+
+// Beeps play as tones. Sounds from SPIKE's library play a short stand-in chirp for their length.
+let audio = null, beepVoice = null;
+const voices = new Set();
+function audioCtx() { if (!audio) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audio = new AC(); } return audio; }
+function tone(freq, seconds, volume, type) {
+  const a = audioCtx(); if (!a || !state.soundOn) return null;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.value = freq; g.gain.value = 0.08 * volume / 100;
+  o.connect(g).connect(a.destination); o.start();
+  if (seconds) o.stop(a.currentTime + seconds / state.scale);
+  voices.add(o); o.onended = () => voices.delete(o);
+  return o;
+}
+sim.onSound = (e) => {
+  if (e.type === 'stop') { for (const o of voices) { try { o.stop(); } catch { /* already stopped */ } } voices.clear(); beepVoice = null; return; }
+  if (e.type === 'beep') {
+    if (beepVoice) { try { beepVoice.stop(); } catch { /* already stopped */ } }
+    beepVoice = tone(440 * Math.pow(2, (e.note - 69) / 12), e.seconds, e.volume, 'square');
+  } else if (e.type === 'sound') {
+    const secs = Math.min(e.seconds, 1.5), o = tone(500, secs, e.volume, 'triangle');
+    if (o) o.frequency.exponentialRampToValueAtTime(1200, audioCtx().currentTime + secs / state.scale);
+  }
+};
+function renderSoundToggle() {
+  $('sound').setAttribute('aria-pressed', String(state.soundOn));
+  $('sound').setAttribute('aria-label', state.soundOn ? 'Sound on' : 'Sound off');
+}
+$('sound').onclick = () => { state.soundOn = !state.soundOn; if (!state.soundOn) sim.onSound({ type: 'stop' }); renderSoundToggle(); save(); };
+renderSoundToggle();
 sim.log('Ready. Press Run to try the program.');
 
 // ---------- field (SVG in millimetres; y flipped so +y points away from home) ----------
@@ -131,6 +184,7 @@ function drawField() {
   $('r-yaw').textContent = Math.round(s.yaw) + '°';
   $('r-arms').textContent = Math.round(sim.arms.E) + '° · ' + Math.round(sim.arms.F) + '°';
   $('r-display').textContent = sim.display || '—';
+  drawHub();
   $('pos').textContent = `Or click the mat. Now at x ${(p.x / 10).toFixed(1)} cm, y ${(p.y / 10).toFixed(1)} cm, heading ${Math.round(((p.h % 360) + 360) % 360)}°`;
   const left = 150 - sim.matchT;
   $('clock').textContent = sim.clockText();
@@ -174,7 +228,7 @@ let ws = null, lastLit = new Set(), loadingWs = false;
 // Show a program in the block editor (after an import, the demo, or Clear).
 function showProgram(program) {
   if (!ws) { state.program = program; save(); return; }
-  registerPorts(program);
+  registerNames(program);
   loadingWs = true;
   try { window.Blockly.serialization.workspaces.load(programToJson(program), ws); } finally { loadingWs = false; }
   syncProgram();
@@ -190,6 +244,7 @@ function countBlocks(prog) {
 function syncProgram() {
   const json = window.Blockly.serialization.workspaces.save(ws);
   const res = jsonToProgram(json);
+  res.program.sounds = state.sounds; // sound lengths from the last imported file
   state.program = res.program; state.ws = json;
   const n = countBlocks(res.program);
   $('code-status').textContent = `${n} block${n === 1 ? '' : 's'}` + (res.warn.length ? ' · ' + res.warn[0] : '');
@@ -208,7 +263,7 @@ function initCode() {
   catch (err) { $('blockly').innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
   let loaded = false;
   if (state.ws) {
-    try { registerPorts(state.program); loadingWs = true; window.Blockly.serialization.workspaces.load(state.ws, ws); loaded = true; }
+    try { registerNames(state.program); loadingWs = true; window.Blockly.serialization.workspaces.load(state.ws, ws); loaded = true; }
     catch { /* saved layout from an older version: rebuild from the program */ }
     finally { loadingWs = false; }
   }
@@ -415,7 +470,7 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
 
 // Read the blocks right before running/exporting, so the newest edits always count.
 const latestProgram = () => { if (ws) syncProgram(); return state.program; };
-$('run').onclick = () => { sim.run(latestProgram()); drawField(); };
+$('run').onclick = () => { const a = audioCtx(); if (a && a.state === 'suspended') a.resume(); sim.run(latestProgram()); drawField(); };
 $('stop').onclick = () => { if (sim.stop()) { state.tokens = Math.max(0, state.tokens - 1); save(); renderScore(); } drawField(); };
 $('reset').onclick = () => { sim.reset(); sim.log('Robot back at the start position.'); drawField(); };
 $('match').onclick = () => {
@@ -485,6 +540,7 @@ $('file').addEventListener('change', async (e) => {
   try {
     const res = await importProject(await file.arrayBuffer());
     Object.assign(state.cfg, res.cfg);
+    state.sounds = res.program.sounds || {};
     showProgram(res.program);
     const setup = [];
     if (res.cfg.pair) setup.push('drive motors ' + res.cfg.pair.split('').join(' + '));

@@ -175,12 +175,12 @@ export class Sim {
     this.yawZero = s.h;
     this.program = { stacks: [], procs: {}, vars: [] }; this.threads = []; this.running = false;
     this.drive = null; this.driveAction = null; this.motorActions = {}; this.motorRun = {};
-    this.vars = {}; this.relZero = {}; this.cmPerRot = null; this.t = 0; this.timer0 = 0; this.noted = new Set();
+    this.vars = {}; this.lists = {}; this.events = []; this.relZero = {}; this.cmPerRot = null; this.t = 0; this.timer0 = 0; this.noted = new Set();
     this.speedPct = 50;
     this.motorSpeed = { A: 75, B: 75, C: 75, D: 75, E: 75, F: 75 };
     this.arms = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
     this.pair = this.cfg.pair;
-    this.display = '';
+    this.resetHub();
     this.trail = []; this.seen = []; this.trailT = 0;
     this.hit = null;
     this.sens = this.readSensors(this.pose);
@@ -317,22 +317,71 @@ export class Sim {
     this.stopMotion();
     this.program = program;
     this.vars = {}; for (const v of program.vars || []) this.vars[v] = 0;
+    this.lists = {}; for (const l of program.lists || []) this.lists[l] = [];
     this.speedPct = 50; this.pair = this.cfg.pair; this.cmPerRot = null;
     this.motorSpeed = { A: 75, B: 75, C: 75, D: 75, E: 75, F: 75 };
     this.t = 0; this.timer0 = 0; this.noted = new Set();
-    this.threads = (program.stacks || []).filter(s => s.length).map(stack => {
-      const th = { cur: null, done: false, stopped: false, depth: 0 };
-      th.gen = this.execList(stack, th, { args: {} });
-      return th;
-    });
+    this.resetHub();
+    this.threads = (program.stacks || []).filter(s => s.length).map(stack => this.spawn(stack));
     this.running = true;
+    // Other start blocks fire when their condition turns true (not if it is already true at launch).
+    this.events = (program.events || []).map(ev => ({ ev, thread: null, prev: ev.hat.t === 'whenBroadcast' ? null : this.hatValue(ev.hat) }));
     this.log('Launched.');
+  }
+
+  spawn(body) {
+    const th = { cur: null, done: false, stopped: false, depth: 0 };
+    th.gen = this.execList(body, th, { args: {} });
+    return th;
+  }
+
+  // Hub light matrix (25 pixels, 0-100 %), text, center button light, buttons and sound.
+  resetHub() {
+    this.matrix = new Array(25).fill(0); this.display = ''; this.brightness = 100; this.centerLight = 'white';
+    this.volume = 100; this.buttons = this.buttons || { left: false, right: false };
+  }
+  sound(ev) { if (this.onSound) this.onSound(ev); }
+  setButton(name, down) { this.buttons[name] = !!down; }
+
+  // Current value of an event start block's condition.
+  hatValue(h) {
+    const scope = { args: {} };
+    switch (h.t) {
+      case 'whenColor': return this.val({ t: 'isColor', port: h.port, color: h.color }, scope);
+      case 'whenDistance': return this.val({ t: 'isDistance', port: h.port, cmp: h.cmp, val: h.val }, scope);
+      case 'whenPressed': { const p = h.port === this.cfg.forcePort && this.pressed(); return h.opt === 'released' ? !p : p; }
+      case 'whenButton': return h.event === 'released' ? !this.buttons[h.button] : !!this.buttons[h.button];
+      case 'whenTimer': return (this.t - this.timer0) > this.num(h.val, scope);
+      case 'whenCondition': return this.bool(h.cond, scope);
+      default: return false;
+    }
+  }
+
+  // Start (or restart) every "when I receive" stack for a message; returns their threads.
+  broadcast(msg) {
+    const started = [];
+    for (const e of this.events) {
+      if (e.ev.hat.t !== 'whenBroadcast' || String(e.ev.hat.msg).toLowerCase() !== String(msg).toLowerCase()) continue;
+      if (e.thread && !e.thread.done) e.thread.stopped = true;
+      e.thread = this.spawn(e.ev.body); this.threads.push(e.thread); started.push(e.thread);
+    }
+    return started;
+  }
+
+  // Fire event stacks whose condition just turned true. Already-running stacks keep going.
+  checkEvents() {
+    for (const e of this.events) {
+      if (e.ev.hat.t === 'whenBroadcast') continue;
+      const now = !!this.hatValue(e.ev.hat);
+      if (now && !e.prev && (!e.thread || e.thread.done)) { e.thread = this.spawn(e.ev.body); this.threads.push(e.thread); }
+      e.prev = now;
+    }
   }
 
   // Returns true when the stop costs a precision token (interrupted outside home during a match).
   stop() {
     const was = this.running || this.drive || Object.keys(this.motorRun).length;
-    this.running = false; this.stopMotion();
+    this.running = false; this.stopMotion(); this.sound({ type: 'stop' });
     if (was && this.matchOn && !this.inHome()) { this.log('Interrupted outside home: lost a precision token.'); return true; }
     if (was) this.log('Stopped.');
     return false;
@@ -346,7 +395,7 @@ export class Sim {
     this.motorActions = {}; this.motorRun = {};
   }
 
-  finish(msg) { this.running = false; this.stopMotion(); this.log(msg); }
+  finish(msg) { this.running = false; this.stopMotion(); this.sound({ type: 'stop' }); this.log(msg); }
 
   startMatch() { this.reset(); this.matchT = 0; this.matchOn = true; this.logLines = []; this.log('Match started. Press Run to launch.'); }
   endMatch() { this.matchOn = false; this.running = false; this.stopMotion(); this.log('Match stopped.'); }
@@ -396,6 +445,16 @@ export class Sim {
       case 'timer': return Math.round((this.t - this.timer0) * 1000) / 1000;
       case 'motorPos': { const a = this.arms[e.port] || 0; return Math.round(((a % 360) + 360) % 360); }
       case 'motorRel': return Math.round((this.arms[e.port] || 0) - (this.relZero[e.port] || 0));
+      case 'volume': return this.volume;
+      case 'buttonPressed': return !!this.buttons[e.button];
+      case 'listContents': {
+        const l = this.lists[e.list] || [];
+        return l.every(x => String(x).length === 1) ? l.join('') : l.join(' ');
+      }
+      case 'listItem': { const l = this.lists[e.list] || [], i = listIndex(this.val(e.index, scope), l.length); return i ? l[i - 1] : ''; }
+      case 'listIndexOf': { const l = this.lists[e.list] || [], x = this.val(e.item, scope); return l.findIndex(v => compare(v, x) === 0) + 1; }
+      case 'listLength': return (this.lists[e.list] || []).length;
+      case 'listContains': { const x = this.val(e.item, scope); return (this.lists[e.list] || []).some(v => compare(v, x) === 0); }
       default: return 0; // noteR and anything unknown
     }
   }
@@ -448,8 +507,45 @@ export class Sim {
       case 'motorStop': for (const p of ports(s.port)) { this.cancelMotor(p); delete this.motorRun[p]; } break;
       case 'motorSpeed': for (const p of ports(s.port)) this.motorSpeed[p] = clamp(N(s.pct), -100, 100); break;
       case 'motorSetRel': for (const p of ports(s.port)) this.relZero[p] = (this.arms[p] || 0) - N(s.val); break;
-      case 'show': this.display = this.str(s.text, scope); break;
-      case 'beep': case 'wait': yield* this.waitFor(N(s.val)); break;
+      case 'show': this.display = this.str(s.text, scope); this.matrix.fill(0); break;
+      case 'showImage': this.showImage(s.image); break;
+      case 'showImageFor': this.showImage(s.image); yield* this.waitFor(N(s.val)); this.matrix.fill(0); break;
+      case 'displayOff': this.matrix.fill(0); this.display = ''; break;
+      case 'setBrightness': this.brightness = clamp(N(s.b), 0, 100); break;
+      case 'setPixel': {
+        const x = Math.round(N(s.x)), y = Math.round(N(s.y));
+        if (x >= 1 && x <= 5 && y >= 1 && y <= 5) { this.matrix[(y - 1) * 5 + (x - 1)] = clamp(N(s.b), 0, 100); this.display = ''; }
+        break;
+      }
+      case 'centerLight': this.centerLight = s.color; break;
+      case 'wait': yield* this.waitFor(N(s.val)); break;
+      case 'beep': this.sound({ type: 'beep', note: N(s.note), seconds: N(s.val), volume: this.volume }); yield* this.waitFor(N(s.val)); break;
+      case 'beepStart': this.sound({ type: 'beep', note: N(s.note), seconds: null, volume: this.volume }); break;
+      case 'playSound': case 'playSoundWait': {
+        const secs = (this.program.sounds && this.program.sounds[s.sound]) || 1;
+        this.sound({ type: 'sound', name: s.sound, seconds: secs, volume: this.volume });
+        if (s.t === 'playSoundWait') yield* this.waitFor(secs);
+        break;
+      }
+      case 'stopSound': this.sound({ type: 'stop' }); break;
+      case 'setVolume': this.volume = clamp(N(s.v), 0, 100); break;
+      case 'changeVolume': this.volume = clamp(this.volume + N(s.v), 0, 100); break;
+      case 'broadcast': this.broadcast(s.msg); break;
+      case 'broadcastWait': {
+        const started = this.broadcast(s.msg);
+        while (started.some(t => !t.done)) { yield; if (!this.running || th.stopped) return; }
+        break;
+      }
+      case 'listAdd': { const l = this.list(s.list); if (l.length < 200000) l.push(this.val(s.item, scope)); break; }
+      case 'listDelete': {
+        const l = this.list(s.list), raw = this.val(s.index, scope);
+        if (String(raw).toLowerCase() === 'all') l.length = 0;
+        else { const i = listIndex(raw, l.length); if (i) l.splice(i - 1, 1); }
+        break;
+      }
+      case 'listClear': this.list(s.list).length = 0; break;
+      case 'listInsert': { const l = this.list(s.list), i = listIndex(this.val(s.index, scope), l.length + 1); if (i && l.length < 200000) l.splice(i - 1, 0, this.val(s.item, scope)); break; }
+      case 'listReplace': { const l = this.list(s.list), i = listIndex(this.val(s.index, scope), l.length); if (i) l[i - 1] = this.val(s.item, scope); break; }
       case 'repeat': {
         const n = Math.round(N(s.times));
         for (let i = 0; i < n; i++) { yield* this.execList(s.body, th, scope); if (!this.running || th.stopped) return; yield; }
@@ -484,6 +580,13 @@ export class Sim {
       case 'note': this.noteOnce(s, 'Skipped a block that isn’t simulated yet: ' + s.op); break;
       default: break;
     }
+  }
+
+  list(name) { return this.lists[name] || (this.lists[name] = []); }
+  showImage(digits) {
+    const d = String(digits || '').padEnd(25, '0');
+    for (let i = 0; i < 25; i++) this.matrix[i] = Math.round((Number(d[i]) || 0) / 9 * this.brightness);
+    this.display = '';
   }
 
   noteOnce(s, msg) { const k = s.id || s.op || msg; if (!this.noted.has(k)) { this.noted.add(k); this.log(msg); } }
@@ -554,7 +657,11 @@ export class Sim {
         try { if (th.gen.next(dt).done) th.done = true; }
         catch (err) { th.done = true; this.log('Error in program: ' + err.message); }
       }
-      if (this.running && this.threads.every(th => th.done)) this.finish('Program finished.');
+      if (this.running) this.checkEvents();
+      this.threads = this.threads.filter(th => !th.done);
+      // A program with event start blocks keeps listening until it is stopped.
+      const listening = this.events.some(e => e.ev.hat.t !== 'whenBroadcast');
+      if (this.running && !this.threads.length && !listening) this.finish('Program finished.');
     }
 
     // Drive wheels.
@@ -635,6 +742,15 @@ export class Sim {
       }
     }
   }
+}
+
+// Scratch list index: 1-based number, or "last" / "random" / "any". Returns 0 when out of range.
+function listIndex(raw, length) {
+  const t = String(raw).toLowerCase();
+  if (t === 'last') return length;
+  if (t === 'random' || t === 'any') return length ? 1 + Math.floor(Math.random() * length) : 0;
+  const i = Math.floor(Number(raw));
+  return i >= 1 && i <= length ? i : 0;
 }
 
 // Scratch-style comparison: numbers compare as numbers, anything else as text (ignoring case).

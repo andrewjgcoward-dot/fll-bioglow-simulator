@@ -1,7 +1,7 @@
 // SPIKE-style drag-and-drop block editor, built on Blockly (loaded as the global `Blockly`)
 // with the Scratch-like "zelos" renderer. Block shapes come from SPEC in blocks.js.
 
-import { SPEC, PORTS, walkProgram } from './blocks.js';
+import { SPEC, PORTS, IMAGES, SOUNDS, walkProgram } from './blocks.js';
 
 const BLOCKLY_VERSION = '11.2.2';
 
@@ -16,15 +16,27 @@ const CATEGORIES = [
 ];
 const SHAPE = { HEXAGON: 1, ROUND: 2 };
 
-// Motor ports seen in imported files that aren't single letters (e.g. "AE" runs two motors).
+// Values the dropdowns must offer before a program loads: motor ports such as "AE" (two motors
+// at once), broadcast messages and sound names.
 const extraPorts = new Set();
-export function registerPorts(prog) {
-  walkProgram(prog, (n) => { if (n.port && !PORTS.includes(n.port)) extraPorts.add(n.port); });
+const messages = new Set(['message1']);
+const sounds = new Set(SOUNDS);
+export function registerNames(prog) {
+  walkProgram(prog, (n) => {
+    if (n.port && !PORTS.includes(n.port)) extraPorts.add(n.port);
+    if (n.msg) messages.add(n.msg);
+    if (n.sound) sounds.add(n.sound);
+  });
+  for (const name of Object.keys(prog.sounds || {})) sounds.add(name);
 }
 
 function argFor(key, d) {
-  if (key === 'name') return { type: 'field_variable', name: 'name', variable: 'my variable' };
   if (!d) return { type: 'field_label_serializable', name: key, text: '' };
+  if (d.kind === 'var') return { type: 'field_variable', name: key, variable: 'my variable', variableTypes: [''], defaultType: '' };
+  if (d.kind === 'list') return { type: 'field_variable', name: key, variable: 'my list', variableTypes: ['list'], defaultType: 'list' };
+  if (d.kind === 'msg') return { type: 'field_message', name: key };
+  if (d.kind === 'sound') return { type: 'field_sound', name: key };
+  if (d.kind === 'matrix') return { type: 'field_matrix', name: key, value: IMAGES.heart };
   if (d.kind === 'menu' || d.kind === 'field') {
     if (d.ports) return { type: 'field_dropdown', name: key, options: () => PORTS.concat([...extraPorts]).map(p => [p, p]) };
     return { type: 'field_dropdown', name: key, options: d.opts.map(o => [o, o]) };
@@ -48,12 +60,76 @@ function defFor(t, s) {
   return def;
 }
 
+// Dropdown of broadcast messages, with "New message…" to add one (like SPIKE).
+function messageField(B) {
+  return class FieldMessage extends B.FieldDropdown {
+    constructor(value) { super(() => [...messages].map(m => [m, m]).concat([['New message…', '__new__']])); if (value) this.setValue(value); }
+    static fromJson(o) { return new FieldMessage(o.value); }
+    doClassValidation_(v) {
+      if (v === '__new__') {
+        const name = (window.prompt('New message name:') || '').trim();
+        if (!name) return null;
+        messages.add(name); return name;
+      }
+      return super.doClassValidation_(v);
+    }
+  };
+}
+
+// The 5×5 light matrix picker: a small picture on the block; tap it to switch pixels on and off.
+function matrixField(B) {
+  const CELL = 6;
+  return class FieldMatrix extends B.Field {
+    constructor(value) { super(value || IMAGES.heart); this.SERIALIZABLE = true; this.CURSOR = 'pointer'; }
+    static fromJson(o) { return new FieldMatrix(o.value); }
+    doClassValidation_(v) { return typeof v === 'string' && /^[0-9]{25}$/.test(v) ? v : null; }
+    initView() {
+      this.cells = [];
+      // Nested group: the zelos theme paints rects directly inside a text field white.
+      const g = B.utils.dom.createSvgElement('g', {}, this.fieldGroup_);
+      B.utils.dom.createSvgElement('rect', { width: CELL * 5 + 4, height: CELL * 5 + 4, rx: 4, fill: '#1F2A44' }, g);
+      for (let i = 0; i < 25; i++) this.cells.push(B.utils.dom.createSvgElement('rect', { x: 2 + (i % 5) * CELL + 0.5, y: 2 + Math.floor(i / 5) * CELL + 0.5, width: CELL - 1, height: CELL - 1, rx: 1 }, g));
+    }
+    render_() {
+      const v = this.getValue() || '';
+      this.cells.forEach((c, i) => c.setAttribute('fill', v[i] === '0' ? '#3A4663' : `rgba(255, 255, 255, ${0.4 + 0.066 * Number(v[i])})`));
+      this.size_ = new B.utils.Size(CELL * 5 + 4, CELL * 5 + 4);
+    }
+    showEditor_() {
+      const box = document.createElement('div'); box.className = 'matrix-editor';
+      const grid = document.createElement('div'); grid.className = 'matrix-grid';
+      const draw = () => { const v = this.getValue(); [...grid.children].forEach((b, i) => { b.classList.toggle('on', v[i] !== '0'); b.setAttribute('aria-pressed', String(v[i] !== '0')); }); };
+      for (let i = 0; i < 25; i++) {
+        const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', `Pixel ${i % 5 + 1}, ${Math.floor(i / 5) + 1}`);
+        b.onclick = () => { const v = this.getValue().split(''); v[i] = v[i] === '0' ? '9' : '0'; this.setValue(v.join('')); draw(); };
+        grid.appendChild(b);
+      }
+      const presets = document.createElement('div'); presets.className = 'matrix-presets';
+      for (const [name, img] of Object.entries(IMAGES)) {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = name;
+        b.onclick = () => { this.setValue(img); draw(); };
+        presets.appendChild(b);
+      }
+      box.append(grid, presets); draw();
+      B.DropDownDiv.getContentDiv().appendChild(box);
+      B.DropDownDiv.setColour('#FFFFFF', '#C6CBD1');
+      B.DropDownDiv.showPositionedByField(this);
+    }
+  };
+}
+
 function defineBlocks(B) {
   B.Extensions.register('sim_hat', function () { this.hat = 'cap'; });
+  B.fieldRegistry.register('field_message', messageField(B));
+  B.fieldRegistry.register('field_matrix', matrixField(B));
+  B.fieldRegistry.register('field_sound', class FieldSound extends B.FieldDropdown {
+    constructor(value) { super(() => [...sounds].map(n => [n, n])); if (value) this.setValue(value); }
+    static fromJson(o) { return new FieldSound(o.value); }
+  });
   B.defineBlocksWithJsonArray(Object.entries(SPEC).map(([t, s]) => defFor(t, s)).concat([
     { type: 'sim_num', message0: '%1', args0: [{ type: 'field_number', name: 'V', value: 0 }], output: null, outputShape: SHAPE.ROUND, colour: '#FFFFFF' },
     { type: 'sim_text', message0: '%1', args0: [{ type: 'field_input', name: 'V', text: '' }], output: null, outputShape: SHAPE.ROUND, colour: '#FFFFFF' },
-    { type: 'sim_var', message0: '%1', args0: [{ type: 'field_variable', name: 'name', variable: 'my variable' }], output: null, outputShape: SHAPE.ROUND, colour: COLOR.var },
+    { type: 'sim_var', message0: '%1', args0: [{ type: 'field_variable', name: 'name', variable: 'my variable', variableTypes: [''], defaultType: '' }], output: null, outputShape: SHAPE.ROUND, colour: COLOR.var },
     { type: 'sim_arg', message0: '%1', args0: [{ type: 'field_label_serializable', name: 'name', text: 'input' }], output: null, outputShape: SHAPE.ROUND, colour: COLOR.my },
     { type: 'sim_arg_b', message0: '%1', args0: [{ type: 'field_label_serializable', name: 'name', text: 'input' }], output: 'Boolean', outputShape: SHAPE.HEXAGON, colour: COLOR.my }
   ]));
@@ -112,6 +188,15 @@ function variablesFlyout(ws) {
     items.push({ kind: 'block', type: 'sim_setVar', fields: first, inputs: { val: slotShadow(SPEC.setVar.p.val) } });
     items.push({ kind: 'block', type: 'sim_changeVar', fields: first, inputs: { val: slotShadow(SPEC.changeVar.p.val) } });
   }
+  items.push({ kind: 'button', text: 'Make a List', callbackKey: 'SIM_MAKE_LIST' });
+  const lists = ws.getVariablesOfType('list');
+  if (lists.length) {
+    const first = { id: lists[0].getId() };
+    for (const l of lists) items.push({ kind: 'block', type: 'sim_listContents', fields: { list: { id: l.getId() } } });
+    for (const t of ['listAdd', 'listDelete', 'listClear', 'listInsert', 'listReplace', 'listItem', 'listIndexOf', 'listLength', 'listContains']) {
+      const b = flyoutBlock(t); b.fields = { list: first }; items.push(b);
+    }
+  }
   return items;
 }
 
@@ -164,6 +249,7 @@ export function createWorkspace(container) {
   ws.registerToolboxCategoryCallback('SIM_VARIABLES', variablesFlyout);
   ws.registerToolboxCategoryCallback('SIM_MYBLOCKS', myBlocksFlyout);
   ws.registerButtonCallback('SIM_MAKE_VAR', (btn) => B.Variables.createVariableButtonHandler(btn.getTargetWorkspace(), null, ''));
+  ws.registerButtonCallback('SIM_MAKE_LIST', (btn) => B.Variables.createVariableButtonHandler(btn.getTargetWorkspace(), null, 'list'));
   ws.registerButtonCallback('SIM_MAKE_BLOCK', () => makeBlock(ws));
   return ws;
 }

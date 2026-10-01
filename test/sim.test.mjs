@@ -187,10 +187,15 @@ function everything() {
   main.push({ t: 'setVar', name: 'speed', val: lit(30) });
   main.push({ t: 'changeVar', name: 'speed', val: { t: 'add', a: { t: 'var', name: 'speed' }, b: lit(5) } });
   main.push({ t: 'call', name: 'jump', args: { height: { t: 'var', name: 'speed' }, fast: node('isPressed', { port: 'F' }) } });
+  const events = Object.entries(SPEC).filter(([t, s]) => s.shape === 'hat' && t !== 'start').map(([t]) => {
+    const hat = node(t); if ('cond' in hat) hat.cond = node('isPressed', { port: 'F' });
+    return { hat, body: [node('beep')] };
+  });
   return {
     stacks: [main, [node('forever', { body: [node('wait')] })], [node('stop', { opt: 'this stack' })]],
+    events,
     procs: { jump: { params: [{ name: 'height', kind: 'n' }, { name: 'fast', kind: 'b' }], body: [node('ifElse', { cond: { t: 'arg', name: 'fast' }, body: [node('move', { val: { t: 'arg', name: 'height' } })], else: [node('wait')] })] } },
-    vars: ['speed']
+    vars: ['speed'], lists: ['my list'], sounds: {}
   };
 }
 
@@ -285,6 +290,96 @@ test('sensor and motor reporters', () => {
   assert.equal(sim.vars.refl, 25, 'green mat reflects about 25 %');
 });
 
+
+const prog3 = (stacks, extra = {}) => Object.assign({ stacks, events: [], procs: {}, vars: [], lists: [], sounds: {} }, extra);
+
+test('lists work like Scratch lists', () => {
+  const L = 'items';
+  const sim = runProgram(prog3([[
+    node('listClear', { list: L }),
+    node('listAdd', { item: 'a', list: L }), node('listAdd', { item: 'b', list: L }), node('listAdd', { item: 'c', list: L }),
+    node('listInsert', { item: 'x', index: 2, list: L }),
+    node('listReplace', { index: 'last', list: L, item: 'z' }),
+    node('listDelete', { index: 1, list: L }),
+    { t: 'setVar', name: 'len', val: node('listLength', { list: L }) },
+    { t: 'setVar', name: 'second', val: node('listItem', { index: 2, list: L }) },
+    { t: 'setVar', name: 'where', val: node('listIndexOf', { item: 'Z', list: L }) },
+    { t: 'setVar', name: 'has', val: node('listContains', { list: L, item: 'b' }) },
+    { t: 'setVar', name: 'all', val: { t: 'listContents', list: L } }
+  ]], { lists: [L] }));
+  assert.deepEqual(sim.lists[L], ['x', 'b', 'z']);
+  assert.equal(sim.vars.len, 3);
+  assert.equal(sim.vars.second, 'b');
+  assert.equal(sim.vars.where, 3, 'item # ignores case');
+  assert.equal(sim.vars.has, true);
+  assert.equal(sim.vars.all, 'xbz', 'single letters join without spaces');
+});
+
+test('broadcast starts "when I receive" stacks; broadcast and wait waits for them', () => {
+  const sim = runProgram(prog3([[
+    node('broadcastWait', { msg: 'go' }),
+    { t: 'setVar', name: 'after', val: { t: 'var', name: 'count' } }
+  ]], { events: [{ hat: node('whenBroadcast', { msg: 'go' }), body: [node('wait', { val: 0.3 }), { t: 'changeVar', name: 'count', val: lit(1) }] }] }));
+  assert.equal(sim.vars.count, 1);
+  assert.equal(sim.vars.after, 1, 'the main stack waited for the receiver to finish');
+});
+
+test('event start blocks fire when their condition turns true', () => {
+  // Drive north out of left home: the color sensor crosses the red home edge, then the timer passes 1 s.
+  const sim = new Sim({}, { x: 240, y: 240, h: 0 }, []);
+  sim.cfg.collide = false;
+  const program = prog3([[node('move', { dir: 'forward', val: 40, unit: 'cm' }), node('wait', { val: 1 }), node('stop', { opt: 'all' })]], { events: [
+    { hat: node('whenColor', { port: 'C', color: 'red' }), body: [{ t: 'changeVar', name: 'reds', val: lit(1) }] },
+    { hat: node('whenTimer', { val: 1 }), body: [{ t: 'setVar', name: 'timer', val: lit('yes') }] },
+    { hat: node('whenButton', { button: 'left', event: 'pressed' }), body: [{ t: 'setVar', name: 'button', val: lit('pressed') }] }
+  ] });
+  sim.run(program);
+  let t = 0;
+  while (sim.running && t < 10) { if (Math.abs(t - 0.5) < 0.01) sim.setButton('left', true); sim.advance(0.02); t += 0.02; }
+  assert.equal(sim.vars.reds, 1, 'crossed the red edge once');
+  assert.equal(sim.vars.timer, 'yes');
+  assert.equal(sim.vars.button, 'pressed');
+});
+
+test('a program with event start blocks keeps listening until stopped', () => {
+  const sim = new Sim({}, { x: 1000, y: 600, h: 0 }, []);
+  sim.run(prog3([[node('wait', { val: 0.1 })]], { events: [{ hat: node('whenButton', { button: 'right', event: 'pressed' }), body: [node('show', { text: 'hi' })] }] }));
+  sim.advance(1);
+  assert.equal(sim.running, true);
+  sim.setButton('right', true); sim.advance(0.1);
+  assert.equal(sim.display, 'hi');
+});
+
+test('the light matrix shows images, pixels and brightness', () => {
+  const sim = runProgram(prog3([[
+    node('setBrightness', { b: 50 }),
+    node('showImage', { image: '9000000000000000000000009' }),
+    node('setPixel', { x: 3, y: 3, b: 100 }),
+    node('centerLight', { color: 'blue' })
+  ]]));
+  assert.equal(sim.matrix[0], 50);
+  assert.equal(sim.matrix[24], 50);
+  assert.equal(sim.matrix[12], 100);
+  assert.equal(sim.matrix[1], 0);
+  assert.equal(sim.centerLight, 'blue');
+  const timed = runProgram(prog3([[node('showImageFor', { image: '9'.repeat(25), val: 0.2 })]]));
+  assert.ok(timed.matrix.every(v => v === 0), 'turned off after the time');
+});
+
+test('sounds play for their length and volume can change', () => {
+  const sim = new Sim({}, { x: 1000, y: 600, h: 0 }, []);
+  const heard = []; sim.onSound = (e) => heard.push(e);
+  const t = runToEnd(sim, prog3([[
+    node('setVolume', { v: 40 }), node('changeVolume', { v: -10 }),
+    node('playSoundWait', { sound: 'Cat Meow 1' }),
+    node('beep', { note: 72, val: 0.25 }),
+    { t: 'setVar', name: 'vol', val: node('volume') }
+  ]], { sounds: { 'Cat Meow 1': 1.25 } }));
+  assert.equal(sim.vars.vol, 30);
+  assert.deepEqual(heard.filter(e => e.type !== 'stop').map(e => e.type + ':' + (e.name || e.note) + ':' + e.volume), ['sound:Cat Meow 1:30', 'beep:72:30']);
+  assert.ok(t > 1.45 && t < 1.7, 'waited for the sound and the beep: ' + t);
+});
+
 test('reads deflate-compressed files like the SPIKE app writes', async () => {
   const { project } = buildProject(prog([['move', { dir: 'back', val: '2', unit: 'rotations' }]]));
   const deflateZip = (entries) => {
@@ -332,7 +427,8 @@ test('imports and round-trips local SPIKE files', { skip: !fixtures && 'set SPIK
     const res = await importProject(ab(fs.readFileSync(f)));
     const back = await importProject(ab(exportLlsp3(res.program, 'rt').zip));
     // Gray reporters export as plain values, so only compare programs without them.
-    if (!JSON.stringify(res.program).includes('"noteR"')) assert.deepEqual(strip(back.program), strip(res.program), path.basename(f));
+    // Exports don't carry SPIKE's sound recordings, so their lengths aren't compared.
+    if (!JSON.stringify(res.program).includes('"noteR"')) assert.deepEqual(strip({ ...back.program, sounds: {} }), strip({ ...res.program, sounds: {} }), path.basename(f));
     const sim = new Sim(res.cfg, { x: 240, y: 240, h: 0 });
     runToEnd(sim, res.program, 150);
   }

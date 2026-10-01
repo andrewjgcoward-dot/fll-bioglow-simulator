@@ -53,6 +53,7 @@
         <button type="button" data-scale="2" aria-pressed="false">2×</button>
         <button type="button" data-scale="4" aria-pressed="false">4×</button>
       </div>
+      <button id="sound" class="btn" type="button" aria-pressed="true" aria-label="Sound on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path id="sound-wave" d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg><span id="sound-label">Sound</span></button>
       <div class="grow"></div>
       <button id="match" class="btn match" type="button"><span id="match-label">Start 2:30 match</span><span id="clock" class="clock">2:30</span></button>
     </div>
@@ -66,7 +67,16 @@
       <div class="card"><div class="k">Distance · port <span id="r-dport"></span></div><div class="v mono" id="r-dist"></div></div>
       <div class="card"><div class="k">Yaw angle</div><div class="v mono" id="r-yaw"></div></div>
       <div class="card"><div class="k">Motors E · F</div><div class="v mono" id="r-arms"></div></div>
-      <div class="card"><div class="k">Hub display</div><div class="v mono hub" id="r-display"></div></div>
+      <div class="card hub-card">
+        <div class="k">Hub · tap the buttons while a program runs</div>
+        <div class="hub-row">
+          <button type="button" class="hub-btn" id="hub-left" aria-label="Hub left button"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5v14L5 12z"/></svg></button>
+          <div class="hub-face"><div class="matrix" id="r-matrix" aria-label="Hub light matrix"></div><span class="center-light" id="r-center"></span></div>
+          <button type="button" class="hub-btn" id="hub-right" aria-label="Hub right button"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
+        </div>
+        <div class="v mono hub" id="r-display"></div>
+      </div>
+      <div class="card vars-card" id="r-vars-card" hidden><div class="k">Variables &amp; lists</div><div class="mono vars" id="r-vars"></div></div>
     </div>
 
     <div class="start">

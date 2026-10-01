@@ -3,8 +3,9 @@
 //
 // A program is a tree:
 //   { stacks: [[stmt, ...], ...],            one list per "when program starts" stack
+//     events: [{ hat, body: [stmt, ...] }],  stacks under other start blocks (when color, when I receive ...)
 //     procs: { name: { params: [{ name, kind: 'n'|'b' }], body: [stmt, ...] } },
-//     vars: [name, ...] }
+//     vars: [name, ...], lists: [name, ...], sounds: { name: seconds } }
 // Statements and expressions are nodes { t: type, id?, ...params }. Number/text params hold
 // expression nodes ({ t: 'num', v } literals or reporters); menu/field params hold strings.
 // Bodies are lists: node.body, node.else.
@@ -29,6 +30,19 @@ const field = (opts, key, map) => ({ kind: 'field', opts, key, map });
 const num = (def, key, o = {}) => ({ kind: 'num', def, key, numType: o.numType || 4, shadow: o.shadow });
 const text = (def, key) => ({ kind: 'text', def, key, numType: 10 });
 const bool = (key) => ({ kind: 'bool', key });
+const varRef = () => ({ kind: 'var', key: 'VARIABLE' });
+const listRef = () => ({ kind: 'list', key: 'LIST' });
+const msg = (key, asField) => ({ kind: 'msg', key, asField });
+const sound = (key = 'SOUND') => ({ kind: 'sound', key, shadow: 'flippersound_sound-selector' });
+const matrix = () => ({ kind: 'matrix', key: 'MATRIX', shadow: 'flipperlight_matrix-5x5-brightness-image' });
+
+// Hub light matrix images: 25 digits (0-9 brightness), row by row from the top left.
+export const IMAGES = {
+  heart: '0909099999999990999000900', smile: '0000009090000009000909990', sad: '0000009090000000999090009',
+  check: '0000000009000909090000900', x: '9000909090009000909090009', arrowUp: '0090009990909090090000900',
+  arrowRight: '0090000090999990009000900', square: '9999990009900099000999999', blank: '0000000000000000000000000'
+};
+export const SOUNDS = ['Beep', 'Chirp', 'Hello', 'Celebrate', 'Bonk'];
 
 const MOTOR_DIR = menu(['clockwise', 'counterclockwise'], 'DIRECTION', 'flippermotor_custom-icon-direction');
 const MOVE_DIR = menu(DIRS4, 'DIRECTION', 'flippermove_custom-icon-direction');
@@ -38,6 +52,15 @@ const COLOR_PORT = port('flippersensors_color-sensor-selector');
 // shape: 'stmt' (default) | 'hat' | 'n' (number/text reporter, round) | 'b' (boolean, hexagon)
 export const SPEC = {
   start: { cat: 'events', shape: 'hat', text: 'when program starts', scratch: ['flipperevents_whenProgramStarts'] },
+  whenColor: { cat: 'events', shape: 'hat', text: 'when %port is color %color', scratch: ['flipperevents_whenColor'], p: { port: port('flipperevents_color-sensor-selector'), color: menu(COLORS, 'OPTION', 'flipperevents_color-selector', colorMap) } },
+  whenPressed: { cat: 'events', shape: 'hat', text: 'when %port is %opt', scratch: ['flipperevents_whenPressed'], p: { port: port('flipperevents_force-sensor-selector'), opt: field(['pressed', 'released'], 'OPTION') } },
+  whenDistance: { cat: 'events', shape: 'hat', text: 'when %port is %cmp %val cm', scratch: ['flipperevents_whenDistance'], p: { port: port('flipperevents_distance-sensor-selector'), cmp: CMP, val: num(15, 'VALUE') }, fixed: { UNIT: 'cm' } },
+  whenButton: { cat: 'events', shape: 'hat', text: 'when %button button %event', scratch: ['flipperevents_whenButton'], p: { button: field(['left', 'right'], 'BUTTON'), event: field(['pressed', 'released'], 'EVENT') } },
+  whenTimer: { cat: 'events', shape: 'hat', text: 'when timer > %val', scratch: ['flipperevents_whenTimer'], p: { val: num(5, 'VALUE') } },
+  whenCondition: { cat: 'events', shape: 'hat', text: 'when %cond', scratch: ['flipperevents_whenCondition'], p: { cond: bool('CONDITION') } },
+  whenBroadcast: { cat: 'events', shape: 'hat', text: 'when I receive %msg', scratch: ['event_whenbroadcastreceived'], p: { msg: msg('BROADCAST_OPTION', true) } },
+  broadcast: { cat: 'events', text: 'broadcast %msg', scratch: ['event_broadcast'], p: { msg: msg('BROADCAST_INPUT') } },
+  broadcastWait: { cat: 'events', text: 'broadcast %msg and wait', scratch: ['event_broadcastandwait'], p: { msg: msg('BROADCAST_INPUT') } },
 
   motor: { cat: 'motor', text: '%port run %dir for %val %unit', scratch: ['flippermotor_motorTurnForDirection'], p: { port: port(), dir: MOTOR_DIR, val: num(1, 'VALUE'), unit: field(['rotations', 'degrees', 'seconds'], 'UNIT') } },
   motorGoTo: { cat: 'motor', text: '%port go %dir to position %pos', scratch: ['flippermotor_motorGoDirectionToPosition'], p: { port: port(), dir: field(['shortest', 'clockwise', 'counterclockwise'], 'DIRECTION'), pos: num(0, 'POSITION', { shadow: 'flippermotor_custom-angle' }) } },
@@ -59,8 +82,21 @@ export const SPEC = {
   pair: { cat: 'move', text: 'set movement motors to %pair', scratch: ['flippermove_setMovementPair'], p: { pair: menu(PAIRS, 'PAIR', 'flippermove_movement-port-selector') } },
   setDistance: { cat: 'move', text: 'set 1 motor rotation to %cm cm moved', scratch: ['flippermove_setDistance'], p: { cm: num(17.6, 'DISTANCE') }, fixed: { UNIT: 'cm' } },
 
+  showImage: { cat: 'light', text: 'turn on %image', scratch: ['flipperlight_lightDisplayImageOn'], p: { image: matrix() } },
+  showImageFor: { cat: 'light', text: 'turn on %image for %val seconds', scratch: ['flipperlight_lightDisplayImageOnForTime'], p: { image: matrix(), val: num(2, 'VALUE') } },
   show: { cat: 'light', text: 'write %text', scratch: ['flipperlight_lightDisplayText'], p: { text: text('Hello', 'TEXT') } },
+  displayOff: { cat: 'light', text: 'turn off pixels', scratch: ['flipperlight_lightDisplayOff'] },
+  setBrightness: { cat: 'light', text: 'set pixel brightness to %b %', scratch: ['flipperlight_lightDisplaySetBrightness'], p: { b: num(75, 'BRIGHTNESS') } },
+  setPixel: { cat: 'light', text: 'set pixel %x , %y to %b %', scratch: ['flipperlight_lightDisplaySetPixel'], p: { x: num(1, 'X'), y: num(1, 'Y'), b: num(100, 'BRIGHTNESS') } },
+  centerLight: { cat: 'light', text: 'set Center Button light to %color', scratch: ['flipperlight_centerButtonLight'], p: { color: menu(COLORS, 'COLOR', 'flipperlight_color-selector-vertical', colorMap) } },
+  playSoundWait: { cat: 'sound', text: 'play sound %sound until done', scratch: ['flippersound_playSoundUntilDone'], p: { sound: sound() } },
+  playSound: { cat: 'sound', text: 'start sound %sound', scratch: ['flippersound_playSound'], p: { sound: sound() } },
   beep: { cat: 'sound', text: 'beep %note for %val seconds', scratch: ['flippersound_beepForTime'], p: { note: num(60, 'NOTE', { shadow: 'flippersound_custom-piano' }), val: num(0.2, 'DURATION') } },
+  beepStart: { cat: 'sound', text: 'start playing beep %note', scratch: ['flippersound_beep'], p: { note: num(60, 'NOTE', { shadow: 'flippersound_custom-piano' }) } },
+  stopSound: { cat: 'sound', text: 'stop all sounds', scratch: ['flippersound_stopSound'] },
+  setVolume: { cat: 'sound', text: 'set volume to %v %', scratch: ['sound_setvolumeto'], p: { v: num(100, 'VOLUME') } },
+  changeVolume: { cat: 'sound', text: 'change volume by %v', scratch: ['sound_changevolumeby'], p: { v: num(-10, 'VOLUME') } },
+  volume: { cat: 'sound', shape: 'n', text: 'volume', scratch: ['sound_volume'] },
 
   wait: { cat: 'control', text: 'wait %val seconds', scratch: ['control_wait'], p: { val: num(1, 'DURATION', { numType: 5 }) } },
   repeat: { cat: 'control', text: 'repeat %times', scratch: ['control_repeat'], p: { times: num(10, 'TIMES', { numType: 6 }) }, body: 'SUBSTACK' },
@@ -81,6 +117,7 @@ export const SPEC = {
   angle: { cat: 'sensor', shape: 'n', text: '%axis angle', scratch: ['flippersensors_orientationAxis'], p: { axis: field(['yaw', 'pitch', 'roll'], 'AXIS') } },
   resetYaw: { cat: 'sensor', text: 'set yaw angle to 0°', scratch: ['flippersensors_resetYaw', 'flippersensors_resetYawAxis', 'flippersensors_setYaw'] },
   timer: { cat: 'sensor', shape: 'n', text: 'timer', scratch: ['flippersensors_timer'] },
+  buttonPressed: { cat: 'sensor', shape: 'b', text: '%button button pressed ?', scratch: ['flippersensors_buttonIsPressed'], p: { button: field(['left', 'right'], 'BUTTON') }, fixed: { EVENT: 'pressed' } },
   resetTimer: { cat: 'sensor', text: 'reset timer', scratch: ['flippersensors_resetTimer'] },
 
   add: { cat: 'op', shape: 'n', text: '%a + %b', scratch: ['operator_add'], p: { a: num('', 'NUM1'), b: num('', 'NUM2') } },
@@ -103,8 +140,18 @@ export const SPEC = {
   mathop: { cat: 'op', shape: 'n', text: '%fn of %a', scratch: ['operator_mathop'], p: { fn: field(['abs', 'floor', 'ceiling', 'sqrt', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'ln', 'log', 'e ^', '10 ^'], 'OPERATOR'), a: num('', 'NUM') } },
 
   // Variables and My Blocks have extra handling in spike-io.js and workspace.js.
-  setVar: { cat: 'var', text: 'set %name to %val', scratch: ['data_setvariableto'], p: { val: text('0', 'VALUE') } },
-  changeVar: { cat: 'var', text: 'change %name by %val', scratch: ['data_changevariableby'], p: { val: num(1, 'VALUE') } },
+  setVar: { cat: 'var', text: 'set %name to %val', scratch: ['data_setvariableto'], p: { name: varRef(), val: text('0', 'VALUE') } },
+  changeVar: { cat: 'var', text: 'change %name by %val', scratch: ['data_changevariableby'], p: { name: varRef(), val: num(1, 'VALUE') } },
+  listAdd: { cat: 'var', text: 'add %item to %list', scratch: ['data_addtolist'], p: { item: text('thing', 'ITEM'), list: listRef() } },
+  listDelete: { cat: 'var', text: 'delete %index of %list', scratch: ['data_deleteoflist'], p: { index: num(1, 'INDEX', { numType: 7 }), list: listRef() } },
+  listClear: { cat: 'var', text: 'delete all of %list', scratch: ['data_deletealloflist'], p: { list: listRef() } },
+  listInsert: { cat: 'var', text: 'insert %item at %index of %list', scratch: ['data_insertatlist'], p: { item: text('thing', 'ITEM'), index: num(1, 'INDEX', { numType: 7 }), list: listRef() } },
+  listReplace: { cat: 'var', text: 'replace item %index of %list with %item', scratch: ['data_replaceitemoflist'], p: { index: num(1, 'INDEX', { numType: 7 }), list: listRef(), item: text('thing', 'ITEM') } },
+  listItem: { cat: 'var', shape: 'n', text: 'item %index of %list', scratch: ['data_itemoflist'], p: { index: num(1, 'INDEX', { numType: 7 }), list: listRef() } },
+  listIndexOf: { cat: 'var', shape: 'n', text: 'item # of %item in %list', scratch: ['data_itemnumoflist'], p: { item: text('thing', 'ITEM'), list: listRef() } },
+  listLength: { cat: 'var', shape: 'n', text: 'length of %list', scratch: ['data_lengthoflist'], p: { list: listRef() } },
+  listContents: { cat: 'var', shape: 'n', text: '%list', scratch: [], p: { list: listRef() } },
+  listContains: { cat: 'var', shape: 'b', text: '%list contains %item ?', scratch: ['data_listcontainsitem'], p: { list: listRef(), item: text('thing', 'ITEM') } },
 
   note: { cat: 'note', text: 'not simulated yet: %op' },
   noteR: { cat: 'note', shape: 'n', text: '%op' }
@@ -120,15 +167,21 @@ export function node(t, o = {}) {
     const v = o[k];
     if (d.kind === 'num' || d.kind === 'text') n[k] = v && typeof v === 'object' ? v : lit(v === undefined ? d.def : v);
     else if (d.kind === 'bool') n[k] = v || null;
+    else if (d.kind === 'var') n[k] = v === undefined ? 'my variable' : String(v);
+    else if (d.kind === 'list') n[k] = v === undefined ? 'my list' : String(v);
+    else if (d.kind === 'msg') n[k] = v === undefined ? 'message1' : String(v);
+    else if (d.kind === 'matrix') n[k] = v === undefined ? IMAGES.heart : String(v);
+    else if (d.kind === 'sound') n[k] = v === undefined ? SOUNDS[0] : String(v);
     else n[k] = v === undefined ? d.opts[0] : String(v);
   }
-  for (const k of ['body', 'else', 'name', 'args', 'op', 'id', 'axis']) if (o[k] !== undefined) n[k] = o[k];
+  for (const k of ['body', 'else', 'args', 'op', 'id']) if (o[k] !== undefined) n[k] = o[k];
+  if (t === 'call' && o.name !== undefined) n.name = o.name;
   if (SPEC[t] && SPEC[t].body && !n.body) n.body = [];
   if (SPEC[t] && SPEC[t].else && !n.else) n.else = [];
   return n;
 }
 
-export const emptyProgram = () => ({ stacks: [[]], procs: {}, vars: [] });
+export const emptyProgram = () => ({ stacks: [[]], events: [], procs: {}, vars: [], lists: [], sounds: {} });
 
 // Convert the older flat list format (if/repeat closed by `end` blocks) into a program tree.
 export function flatToAst(flat) {
@@ -150,7 +203,7 @@ export function flatToAst(flat) {
     }
     return out;
   };
-  return { stacks: [seq()], procs: {}, vars: [] };
+  return { stacks: [seq()], events: [], procs: {}, vars: [], lists: [], sounds: {} };
 }
 
 export const DEMO = () => flatToAst([
@@ -173,5 +226,6 @@ export function walkProgram(prog, fn) {
     for (const [k, v] of Object.entries(n)) if (k !== 't' && v && typeof v === 'object') visit(v);
   };
   prog.stacks.forEach(visit);
+  (prog.events || []).forEach(e => { visit(e.hat); visit(e.body); });
   Object.values(prog.procs || {}).forEach(p => visit(p.body));
 }
