@@ -1,0 +1,4 @@
+node_modules/
+# Your own SPIKE projects for local testing (see README)
+fixtures/
+*.llsp3

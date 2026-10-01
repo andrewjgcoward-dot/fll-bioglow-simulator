@@ -1,0 +1,11 @@
+{
+  "name": "fll-bioglow-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser simulator for the FIRST LEGO League Challenge 2026-27 BioGlow robot game, with SPIKE Prime Word Blocks import/export.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start": "python -m http.server 8000"
+  }
+}
