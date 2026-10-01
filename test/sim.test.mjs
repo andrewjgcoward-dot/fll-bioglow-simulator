@@ -512,3 +512,19 @@ test('the block editor ignores loose blocks and reads an empty "if" as false', (
   const sim = runProgram(program);
   assert.ok(!sim.logLines.some(l => l.includes('Bumped')), 'the stop block inside the empty if did not run');
 });
+
+test('a model set to one approach side only reacts to pushes from that side', () => {
+  // M03 is at (80, 658). Driving west into it is a push from the east.
+  const fromEast = () => { const s = new Sim({}, { x: 300, y: 658, h: -90 }, []); return s; };
+  const wrong = fromEast(); wrong.approach = { m03: 'south' };
+  runToEnd(wrong, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+  assert.equal(wrong.mission.m03a, undefined, 'a push from the east does not count when south is required');
+  assert.ok(wrong.logLines.some(l => l === 'M03: touched, but nothing happened.'));
+  const right = fromEast(); right.approach = { m03: 'east' };
+  runToEnd(right, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+  assert.equal(right.mission.m03a, true);
+  // From the south: drive north into its bottom face.
+  const south = new Sim({}, { x: 80, y: 420, h: 0 }, []); south.approach = { m03: 'south' };
+  runToEnd(south, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+  assert.equal(south.mission.m03a, true);
+});

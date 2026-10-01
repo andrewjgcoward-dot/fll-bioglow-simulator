@@ -1,4 +1,4 @@
-import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, DOCKS, DEFAULT_DOCKS, AUTO_KEYS, MECHANISMS } from './field.js';
+import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, DOCKS, DEFAULT_DOCKS, AUTO_KEYS, MECHANISMS, APPROACH, DEFAULT_APPROACH } from './field.js';
 import { PORTS, PAIRS, DEMO, flatToAst, emptyProgram } from './blocks.js';
 import { programToJson, jsonToProgram } from './blocks-json.js';
 import { createWorkspace, registerNames } from './workspace.js';
@@ -37,20 +37,21 @@ const state = {
   pieces: Array.isArray(saved.pieces) ? saved.pieces : structuredClone(LOOSE_DEFAULTS),
   score: saved.score || {}, tokens: saved.tokens ?? 6, inspection: !!saved.inspection,
   grid: saved.grid ?? true, scale: 1,
-  autoScore: saved.autoScore ?? true, docks: Object.assign({}, DEFAULT_DOCKS, saved.docks), hints: saved.hints ?? true
+  autoScore: saved.autoScore ?? true, docks: Object.assign({}, DEFAULT_DOCKS, saved.docks), hints: saved.hints ?? true,
+  approach: Object.assign({}, DEFAULT_APPROACH, saved.approach), showSides: !!saved.showSides
 };
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
       program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
-      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks, hints: state.hints
+      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks, hints: state.hints, approach: state.approach, showSides: state.showSides
     }));
   } catch { /* storage unavailable: keep working without it */ }
 }
 
 const sim = new Sim(state.cfg, state.start, state.pieces);
 sim.cfg = state.cfg; // share the object so Robot tab edits apply immediately
-sim.docks = state.docks; sim.reset();
+sim.docks = state.docks; sim.approach = state.approach; sim.reset();
 sim.onLog = () => renderLog();
 
 // ---------- hub: light matrix, center light, buttons, variables, sound ----------
@@ -238,7 +239,7 @@ function actionsOf(o) {
 function drawHints() {
   const show = state.hints;
   const objs = show ? sim.objects.filter(o => actionsOf(o).length) : [];
-  const key = show + '|' + objs.map(o => [o.key || o.id, Math.round(o.x), Math.round(o.y), actionsOf(o).map(a => a.label + a.done + a.bad)].join()).join(';');
+  const key = show + '|' + state.showSides + JSON.stringify(state.approach) + '|' + objs.map(o => [o.key || o.id, Math.round(o.x), Math.round(o.y), actionsOf(o).map(a => a.label + a.done + a.bad)].join()).join(';');
   if (key === refs.hintKey) return;
   refs.hintKey = key; refs.hints.textContent = '';
   for (const o of objs) {
@@ -255,7 +256,21 @@ function drawHints() {
     const t = svgEl('text', { y: 8, 'text-anchor': 'middle', class: 'hint-l', fill: bad ? '#FFE3E0' : done ? '#E6FFF0' : '#F2C48A' }, g);
     t.textContent = text;
   }
+  if (state.showSides) for (const o of sim.objects) {
+    const side = APPROACH[state.approach[modelKey(o)]];
+    if (!side || o.loose) continue;
+    // An arrow outside the model, on the side the robot comes from, pointing at it.
+    const reach = Math.hypot(o.w, o.h) / 2 + 20;
+    const tip = [o.x - side[0] * reach, o.y - side[1] * reach];
+    const ang = Math.atan2(-side[1], side[0]) * 180 / Math.PI;
+    const g = svgEl('g', { transform: `translate(${tip[0].toFixed(0)} ${Y(tip[1]).toFixed(0)}) rotate(${ang.toFixed(0)})` }, refs.hints);
+    svgEl('line', { x1: -90, y1: 0, x2: -22, y2: 0, stroke: '#8FE3B0', 'stroke-width': 12, 'stroke-linecap': 'round' }, g);
+    svgEl('path', { d: 'M0 0 L-34 -22 L-34 22 Z', fill: '#8FE3B0', stroke: '#0C1411', 'stroke-width': 3 }, g);
+  }
 }
+
+const modelKey = (o) => o.dock ? 'dock:' + o.holds : o.key;
+const SIDE_NAMES = { any: 'Any side', south: 'From the south (home wall)', north: 'From the north (back wall)', west: 'From the west (red side)', east: 'From the east (blue side)' };
 
 // Mission details for a tapped model or dock.
 function showMissionCard(o) {
@@ -271,10 +286,21 @@ function showMissionCard(o) {
       || '<div class="mc-do">The simulator doesn’t model this one yet: score it yourself on the Score tab.</div>'}
     ${ms.map(m => `<div><span class="mid">${m.id}</span><b>${esc(m.name)}</b> · ${missionPoints(m, state.score)} pts now<ul>${m.items.map(it => `<li class="${state.score[it.k] ? 'done' : ''}">${esc(it.label)} — ${it.zero ? '×0' : it.count ? it.pts + ' each' : it.pts}</li>`).join('')}</ul></div>`).join('')}
     ${dock ? '<div class="fine">Change which model sits here under “Missions 13–15” below the mat.</div>' : ''}
+    ${MECHANISMS.some(m => m.how === 'push' && (m.model || 'dock:' + m.dock) === modelKey(o)) ? `<details><summary>Coach: which side must the robot push from?</summary>
+      <div class="fine">Set this from the real model. A push from any other side does nothing (the log only says “touched, but nothing happened”). Kids only see the direction if “Show approach directions” is on. Saved on this device and included in share links.</div>
+      <div class="seg" data-approach="${esc(modelKey(o))}">${Object.entries(SIDE_NAMES).map(([k, label]) => `<button type="button" data-side="${k}" aria-pressed="${(state.approach[modelKey(o)] || 'any') === k}">${esc(label)}</button>`).join('')}</div>
+    </details>` : ''}
     <div class="fine">Simplified: the real model has levers and hinges; the simulator only checks how the robot touches it.</div>`;
   card.hidden = false;
 }
-$('mission-card').addEventListener('click', (e) => { if (e.target.closest('[data-close]')) $('mission-card').hidden = true; });
+$('mission-card').addEventListener('click', (e) => {
+  if (e.target.closest('[data-close]')) { $('mission-card').hidden = true; return; }
+  const b = e.target.closest('[data-approach] [data-side]'); if (!b) return;
+  const key = b.parentElement.dataset.approach;
+  if (b.dataset.side === 'any') delete state.approach[key]; else state.approach[key] = b.dataset.side;
+  b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  save(); drawField();
+});
 
 // ---------- missions 13-15 docks ----------
 
@@ -293,10 +319,11 @@ function setDock(dockKey, model) {
 function renderDocks() {
   $('dock-selects').innerHTML = DOCKS.map(d => `<label>${esc(d.name[0].toUpperCase() + d.name.slice(1))}
     <select data-dock="${d.key}">${DOCK_MODELS.map(m => `<option value="${m}"${state.docks[d.key] === m ? ' selected' : ''}>${m} ${esc(missionName(m))}</option>`).join('')}</select></label>`).join('');
-  $('hints').checked = state.hints;
+  $('hints').checked = state.hints; $('sides').checked = state.showSides;
 }
 $('dock-selects').addEventListener('change', (e) => { if (e.target.dataset.dock) setDock(e.target.dataset.dock, e.target.value); });
 $('hints').onchange = (e) => { state.hints = e.target.checked; save(); drawField(); };
+$('sides').onchange = (e) => { state.showSides = e.target.checked; save(); drawField(); };
 
 function renderLog() { $('log').innerHTML = sim.logLines.map(l => `<div>${esc(l)}</div>`).join(''); }
 
@@ -858,7 +885,7 @@ const isCancel = (err) => err && err.name === 'AbortError';
 $('share').onclick = async () => {
   const program = latestProgram();
   let url;
-  try { url = await shareUrl(location.href, { program, cfg: state.cfg, start: state.start }); }
+  try { url = await shareUrl(location.href, { program, cfg: state.cfg, start: state.start, approach: state.approach }); }
   catch (err) { showMsg('Could not make a share link: ' + err.message); return; }
   const { zip } = exportLlsp3(program, 'BioGlow sim export');
   const file = new File([zip], SHARE_NAME, { type: 'application/octet-stream' });
@@ -908,6 +935,8 @@ async function openShared() {
   state.sounds = data.program.sounds || {};
   showProgram(data.program);
   if (data.start) setStart(data.start);
+  // Sides set by the sender replace ours; a link with none leaves this device's settings alone.
+  if (data.approach && Object.keys(data.approach).length) { for (const k of Object.keys(state.approach)) delete state.approach[k]; Object.assign(state.approach, data.approach); save(); }
   sim.reset(); renderRobot(); drawField();
   showMsg(`Opened a shared program: ${countBlocks(data.program)} blocks.`);
 }

@@ -1,7 +1,7 @@
 // Robot simulation: a two-wheel SPIKE Prime drive base on the BioGlow mat.
 // Heading is in degrees, clockwise from "north" (away from the home wall).
 
-import { FW, FH, HOME_R, MODELS, DOCKS, LINES, MATCH_SECONDS, MECHANISMS, DEFAULT_DOCKS } from './field.js';
+import { FW, FH, HOME_R, MODELS, DOCKS, LINES, MATCH_SECONDS, MECHANISMS, APPROACH, APPROACH_TOLERANCE, DEFAULT_APPROACH, DEFAULT_DOCKS } from './field.js';
 
 // Robot-local coordinates: origin at the middle of the wheel axle, x to the right, y forward (mm).
 export const DEFAULT_CONFIG = {
@@ -136,6 +136,7 @@ export class Sim {
     this.start = Object.assign({ x: 240, y: 240, h: 0 }, start);
     this.pieces = pieces || [];
     this.docks = Object.assign({}, DEFAULT_DOCKS); // which mission model sits on each dock
+    this.approach = Object.assign({}, DEFAULT_APPROACH); // model key (or dock:M15) -> side pushes must come from
     this.logLines = [];
     this.onLog = null;
     this.matchOn = false;
@@ -192,20 +193,35 @@ export class Sim {
   // --- mission mechanisms (simplified; see MECHANISMS in field.js) ---
   resetMission() {
     this.mission = { m10a: true, m10b: true, m02: 0, m13: false, m14a: 0 };
-    this.mechDone = new Set(); this.holdT = {}; this.contacts = new Set();
+    this.mechDone = new Set(); this.holdT = {}; this.contacts = new Map(); this.missed = new Set();
   }
 
-  // Remember how the robot touched a model this step: 'push' or 'press'.
-  touch(o, how) {
+  // Remember how the robot touched a model this step: 'push' (with the push direction) or 'press'.
+  touch(o, how, dir) {
     const k = o.dock ? 'dock:' + o.holds : o.key;
-    if (k) this.contacts.add(k + '|' + how);
+    if (!k) return;
+    const key = k + '|' + how;
+    if (!this.contacts.has(key)) this.contacts.set(key, []);
+    if (dir) this.contacts.get(key).push(dir);
+  }
+
+  // Does a push in one of these directions count for mechanism m?
+  rightSide(m, dirs) {
+    const side = APPROACH[this.approach[m.model || 'dock:' + m.dock]];
+    if (!side || m.how !== 'push') return true;
+    const c = Math.cos(APPROACH_TOLERANCE * Math.PI / 180);
+    return dirs.some(d => d[0] * side[0] + d[1] * side[1] >= c);
   }
 
   runMechanisms(dt) {
-    const now = this.contacts; this.contacts = new Set();
+    const now = this.contacts; this.contacts = new Map();
     MECHANISMS.forEach((m, i) => {
       const k = m.model || 'dock:' + m.dock;
-      const hit = m.how === 'touch' ? [...now].some(c => c.startsWith(k + '|')) : now.has(k + '|' + m.how);
+      let hit = m.how === 'touch' ? [...now.keys()].some(c => c.startsWith(k + '|')) : now.has(k + '|' + m.how);
+      if (hit && !this.rightSide(m, now.get(k + '|' + m.how))) {
+        hit = false; // pushed from the wrong side: the real lever wouldn't move
+        if (!this.mechDone.has(i) && !this.missed.has(m.model || m.dock)) { this.missed.add(m.model || m.dock); this.log(m.says.split(':')[0] + ': touched, but nothing happened.'); }
+      }
       if (m.hold) { this.holdT[i] = hit ? (this.holdT[i] || 0) + dt : 0; if (this.holdT[i] < m.hold) return; }
       else if (!hit) return;
       if (this.mechDone.has(i)) return;
@@ -281,7 +297,7 @@ export class Sim {
     for (const box of boxes) for (const o of this.objects) {
       if (o.lifted) continue;
       const m = mtv(box, o); if (!m) continue;
-      this.touch(o, 'push');
+      this.touch(o, 'push', m.axis);
       if (!this.pushable(o)) { undo(); return o.name; }
       const saved = { x: o.x, y: o.y, r: o.r };
       const push = m.depth + 0.5;

@@ -89,24 +89,33 @@ export function totalScore(score, tokens, inspection) {
 //   press = a lift arm comes down on it
 //   touch = any contact (for models that must not be disturbed)
 // "sets" are score sheet items the action completes. "hold" needs that many seconds of pushing.
+// A push can also be required to come from one side of the mat (see APPROACH); the default is any side.
 export const MECHANISMS = [
-  { model: 'm01pilot', how: 'push', sets: ['m01a'], says: 'M01: the pilot launched the drone.', lifts: 'm01drone' },
-  { model: 'm01map', how: 'press', sets: ['m01b'], says: 'M01: the LiDAR map flipped over.' },
-  { model: 'm02', how: 'push', seeds: 3, says: 'M02: the seeds popped off the stalk.' },
-  { model: 'm03', how: 'push', sets: ['m03a'], says: 'M03: the research flag is down.' },
-  { model: 'm04', how: 'press', sets: ['m04a'], says: 'M04: a leaf came off the nest.' },
-  { model: 'm05', how: 'push', sets: ['m05a'], says: 'M05: the plant root is partly extended.' },
-  { model: 'm05', how: 'push', hold: 1, sets: ['m05b'], clears: ['m05a'], says: 'M05: the plant root is completely extended.' },
-  { model: 'm0607', how: 'push', sets: ['m07a'], says: 'M07: the mycelium is extended.' },
-  { model: 'm0809', how: 'press', sets: ['m08'], says: 'M08: the vine is down on the mat.' },
-  { model: 'm0809', how: 'push', sets: ['m09a'], says: 'M09: the research platform is raised.' },
-  { model: 'm10spider', how: 'touch', clears: ['m10a'], says: 'M10: the spider habitat was disturbed.' },
-  { model: 'm10snail', how: 'touch', clears: ['m10b'], says: 'M10: the snail habitat was disturbed.' },
-  { model: 'm11', how: 'push', sets: ['m11'], says: 'M11: the root cover is down.' },
-  { model: 'm12', how: 'press', sets: ['m12a'], says: 'M12: the cane is raised.' },
-  { dock: 'M15', how: 'press', sets: ['m15a'], says: 'M15: the nesting canopy is raised.' },
-  { dock: 'M15', how: 'push', sets: ['m15c'], says: 'M15: the compost hatch is open.' }
+  { id: 'm01-pilot', model: 'm01pilot', how: 'push', sets: ['m01a'], says: 'M01: the pilot launched the drone.', lifts: 'm01drone' },
+  { id: 'm01-map', model: 'm01map', how: 'press', sets: ['m01b'], says: 'M01: the LiDAR map flipped over.' },
+  { id: 'm02-stalk', model: 'm02', how: 'push', seeds: 3, says: 'M02: the seeds popped off the stalk.' },
+  { id: 'm03-rock', model: 'm03', how: 'push', sets: ['m03a'], says: 'M03: the research flag is down.' },
+  { id: 'm04-leaf', model: 'm04', how: 'press', sets: ['m04a'], says: 'M04: a leaf came off the nest.' },
+  { id: 'm05-part', model: 'm05', how: 'push', sets: ['m05a'], says: 'M05: the plant root is partly extended.' },
+  { id: 'm05-full', model: 'm05', how: 'push', hold: 1, sets: ['m05b'], clears: ['m05a'], says: 'M05: the plant root is completely extended.' },
+  { id: 'm07-mycelium', model: 'm0607', how: 'push', sets: ['m07a'], says: 'M07: the mycelium is extended.' },
+  { id: 'm08-vine', model: 'm0809', how: 'press', sets: ['m08'], says: 'M08: the vine is down on the mat.' },
+  { id: 'm09-platform', model: 'm0809', how: 'push', sets: ['m09a'], says: 'M09: the research platform is raised.' },
+  { id: 'm10-spider', model: 'm10spider', how: 'touch', clears: ['m10a'], says: 'M10: the spider habitat was disturbed.' },
+  { id: 'm10-snail', model: 'm10snail', how: 'touch', clears: ['m10b'], says: 'M10: the snail habitat was disturbed.' },
+  { id: 'm11-cover', model: 'm11', how: 'push', sets: ['m11'], says: 'M11: the root cover is down.' },
+  { id: 'm12-cane', model: 'm12', how: 'press', sets: ['m12a'], says: 'M12: the cane is raised.' },
+  { id: 'm15-canopy', dock: 'M15', how: 'press', sets: ['m15a'], says: 'M15: the nesting canopy is raised.' },
+  { id: 'm15-hatch', dock: 'M15', how: 'push', sets: ['m15c'], says: 'M15: the compost hatch is open.' }
 ];
 // Score items the simulation can fill in. M10 starts complete and is lost when touched;
 // M02, M13 and M14 are counted from where seeds and the keystone species end up.
 export const AUTO_KEYS = ['m01a', 'm01b', 'm02', 'm03a', 'm04a', 'm05a', 'm05b', 'm07a', 'm08', 'm09a', 'm10a', 'm10b', 'm11', 'm12a', 'm13', 'm14a', 'm15a', 'm15c'];
+
+// Approach sides for pushes: the direction the robot comes from, as compass points on the mat
+// (north = the back wall, south = the home wall, west = the red home side, east = the blue home side).
+// The value is the push direction (from the robot into the model).
+export const APPROACH = { south: [0, 1], north: [0, -1], west: [1, 0], east: [-1, 0] };
+export const APPROACH_TOLERANCE = 55; // degrees either side of the required direction
+// Sides confirmed on the real models, by model key (docks: 'dock:M15'). Unlisted models take pushes from any side.
+export const DEFAULT_APPROACH = {};

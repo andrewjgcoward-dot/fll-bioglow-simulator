@@ -1,4 +1,4 @@
-// Share links: the program, robot settings and start position packed into the link itself
+// Share links: the program, robot settings, start position and approach sides packed into the link itself
 // (#p=…, deflate-compressed, base64url). Nothing is uploaded; whoever opens the link gets a copy.
 
 const PREFIX = 'p=';
@@ -17,8 +17,8 @@ const fromB64url = (s) => {
 const pipe = async (u8, stream) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer());
 
 // Block ids only matter inside one editor, so they are left out to keep links short.
-export async function encodeShare({ program, cfg, start }) {
-  const json = JSON.stringify({ v: VERSION, program, cfg, start }, (k, v) => k === 'id' ? undefined : v);
+export async function encodeShare({ program, cfg, start, approach }) {
+  const json = JSON.stringify({ v: VERSION, program, cfg, start, approach }, (k, v) => k === 'id' ? undefined : v);
   return toB64url(await pipe(new TextEncoder().encode(json), new CompressionStream('deflate-raw')));
 }
 
