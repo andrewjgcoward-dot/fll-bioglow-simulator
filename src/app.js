@@ -6,7 +6,7 @@ import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside, calibrateWheel, calibrate
 import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 import { parseRepo, listProjects, fetchProject } from './github.js';
-import { shareUrl, decodeShare, codeFromHash, LONG_LINK } from './share.js';
+import { shareUrl, decodeShare, codeFromHash, LONG_LINK, robotUrl, robotCodeFromHash, decodeRobot } from './share.js';
 
 const SWATCH = { black: '#111111', violet: '#7A4FD6', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
 const demoProgram = () => DEMO();
@@ -487,7 +487,7 @@ function renderRobot() {
     <div class="section-h">Robot layout</div>
     <div class="fine">Drag the wheels, color sensor (circle), distance sensor (eyes) and arms (orange, blue pivot). Tap a part to change it. Each grid square is 1 LEGO stud (8 mm).</div>
     <svg id="robot-editor" viewBox="${-REACH} ${-REACH} ${REACH * 2} ${REACH * 2}" role="img" aria-label="Top view of the robot. Drag parts to place them."></svg>
-    <div class="row"><button type="button" class="btn small" data-add-arm>Add arm</button><span class="muted" id="ed-pos"></span></div>
+    <div class="row"><button type="button" class="btn small" data-add-arm>Add arm</button><button type="button" class="btn small" data-share-robot>Share this robot</button><span class="muted" id="ed-pos"></span></div>
     <div id="part-props" class="props"></div>
 
     <div class="section-h">Drive base</div>
@@ -643,6 +643,7 @@ $('tab-robot').addEventListener('change', (e) => {
 $('tab-robot').addEventListener('click', (e) => {
   const apply = e.target.closest('[data-apply]');
   if (apply) { calibrate(Number(apply.dataset.apply)); return; }
+  if (e.target.closest('[data-share-robot]')) { shareRobot(); return; }
   if (e.target.closest('[data-add-arm]')) {
     const used = new Set(state.cfg.arms.map(a => a.port).concat(state.cfg.pair.split(''), [state.cfg.colorPort, state.cfg.distPort]));
     const port = ['E', 'F', 'D', 'C', 'B', 'A'].find(p => !used.has(p)) || 'F';
@@ -935,8 +936,36 @@ $('share').onclick = async () => {
     + (canFile ? '' : '\nThis browser can only save the SPIKE file, not attach it to a share.') + '\n', box);
 };
 
+// Robot link: only the robot setup (sizes, wheels, sensors, arms, ports), not the program.
+async function shareRobot() {
+  let url;
+  try { url = await robotUrl(location.href, state.cfg); } catch (err) { showMsg('Could not make a robot link: ' + err.message); return; }
+  const shown = document.createElement('a'); shown.className = 'share-link'; shown.href = url; shown.textContent = url;
+  try {
+    if (navigator.share) { await navigator.share({ title: 'BioGlow simulator robot', text: 'Open this to load our robot in the BioGlow simulator:', url }); return; }
+    await navigator.clipboard.writeText(url);
+    showMsg('Robot link copied. Opening it loads this robot (not the program) on any device:', shown);
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;
+    showMsg('Copy this robot link. Opening it loads this robot (not the program) on any device:', shown);
+  }
+}
+
+async function openSharedRobot(code) {
+  history.replaceState(null, '', location.pathname + location.search);
+  let robot;
+  try { robot = await decodeRobot(code); } catch (err) { showMsg(err.message); return; }
+  if (!confirm('Load the shared robot? It replaces the robot setup on this device. Your program stays.')) return;
+  sim.stop();
+  Object.assign(state.cfg, normalizeConfig(robot));
+  save(); sim.reset(); renderRobot(); drawField();
+  showMsg('Loaded a shared robot. Check it on the Robot tab.');
+}
+
 // Open a program from a share link (on load, or when a link is pasted into this tab).
 async function openShared() {
+  const robotCode = robotCodeFromHash(location.hash);
+  if (robotCode) { await openSharedRobot(robotCode); return; }
   const code = codeFromHash(location.hash);
   if (!code) return;
   history.replaceState(null, '', location.pathname + location.search); // a reload shouldn't reopen it

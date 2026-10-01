@@ -40,3 +40,25 @@ export function codeFromHash(hash) {
   const h = String(hash || '').replace(/^#/, '');
   return h.startsWith(PREFIX) ? h.slice(PREFIX.length) : null;
 }
+
+// Robot links (#robot=…) carry only the robot setup, so opening one keeps the program.
+const ROBOT_PREFIX = 'robot=';
+const pack = async (obj) => toB64url(await pipe(new TextEncoder().encode(JSON.stringify(obj)), new CompressionStream('deflate-raw')));
+
+export async function robotUrl(pageUrl, cfg) {
+  const u = new URL(pageUrl); u.hash = ROBOT_PREFIX + await pack({ v: VERSION, robot: cfg });
+  return u.href;
+}
+
+export function robotCodeFromHash(hash) {
+  const h = String(hash || '').replace(/^#/, '');
+  return h.startsWith(ROBOT_PREFIX) ? h.slice(ROBOT_PREFIX.length) : null;
+}
+
+export async function decodeRobot(code) {
+  let data;
+  try { data = JSON.parse(new TextDecoder().decode(await pipe(fromB64url(code), new DecompressionStream('deflate-raw')))); }
+  catch { throw new Error('This robot link is damaged or incomplete. It may have been cut off when it was sent.'); }
+  if (!data || data.v !== VERSION || !data.robot || typeof data.robot !== 'object') throw new Error('This robot link is from a different version of the simulator.');
+  return data.robot;
+}

@@ -32,3 +32,13 @@ test('cut-off or foreign links give a clear message', async () => {
   const other = await encodeShare({ program: { nope: 1 }, cfg: {}, start: {} });
   await assert.rejects(decodeShare(other), /different version/);
 });
+
+test('a robot link carries only the robot setup', async () => {
+  const { robotUrl, robotCodeFromHash, decodeRobot } = await import('../src/share.js');
+  const cfg = { ...DEFAULT_CONFIG, track: 115, arms: [{ id: 'a1', port: 'C', motion: 'lift', x: 0, y: 140, dir: 'front', len: 60, rest: 'up', cw: 'lowers', ratio: 1 }] };
+  const url = await robotUrl('https://example.org/sim/', cfg);
+  assert.ok(url.startsWith('https://example.org/sim/#robot='));
+  assert.equal(codeFromHash(new URL(url).hash), null, 'not mistaken for a program link');
+  assert.deepEqual(await decodeRobot(robotCodeFromHash(new URL(url).hash)), cfg);
+  await assert.rejects(decodeRobot('nope'), /robot link is damaged/);
+});

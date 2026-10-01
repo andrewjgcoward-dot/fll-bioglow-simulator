@@ -34,6 +34,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
   - **Export:** writes `.llsp3` files that follow the SPIKE App's file layout.
   - **Share:** *Share link* sends the program, robot setup and start position by email, chat or any app on the device's share sheet. The program is packed into the link itself (`#p=…`), so nothing is uploaded and opening the link loads it into the simulator. *Share file* attaches the `.llsp3` where the browser allows it; Chrome on Android doesn't allow SPIKE files, so there it saves to Downloads instead.
+  - **Share this robot** (Robot tab): a link carrying only the robot setup (sizes, wheels, sensors, arms, ports). Opening it replaces the robot on that device and keeps the program.
   - **Open from GitHub:** lists the `.llsp3` files in a GitHub repository, grouped by folder, and opens one with a tap. A private repo needs a fine-grained personal access token with access to only that repository, Contents: Read-only, and an expiry date. The repo name and token are remembered in that browser only and sent only to `api.github.com`; **Forget token** removes them.
 - **Match mode:** a 2:30 clock. Stopping the robot outside home costs a precision token.
 - **Score sheet:** all 15 missions, equipment inspection and precision tokens, using the rulebook's point values.
