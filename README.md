@@ -11,7 +11,17 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **Left / Right:** one tap moves the start position to the matching spot in the other home.
 - **Robot:** a two-wheel drive base you can configure, with a color sensor, a distance sensor, a gyro (yaw angle) and attachment motors.
 - **Robot editor:** drag the color sensor, distance sensor and arms onto a top view of the robot. Each arm is a **lift/press** arm (tilts up and down) or a **sweep** arm (swings flat), points front, back, left or right, and has a length and gear ratio. Lowered and sweeping arms push loose pieces; arms stop when they press on a model or the mat, like SPIKE stall detection.
-- **Blocks:** a drag-and-drop editor that looks and works like the SPIKE App: blocks snap together under "when program starts", the category menu uses SPIKE's colors, `if` and `repeat` are C-shaped, and sensor conditions are hexagon blocks that drop into `if` and `wait until`. The running block is outlined in yellow. Blocks cover moving, steering, start/stop moving, movement speed and motors, motor run / go to position / speed / stop, wait, wait until, if, repeat, reset yaw, write and beep.
+- **Blocks:** a drag-and-drop editor that looks and works like the SPIKE App, with the same ten categories:
+  - **Motors:** run for, go to position, start, stop, set speed, set relative position, position and relative position.
+  - **Movement:** move, steer, tank (left/right %), start/stop moving, movement speed, movement motors, and "1 motor rotation = … cm".
+  - **Light, Sound and Events:** write, beep, and "when program starts". Several start stacks run at the same time, like on the hub.
+  - **Control:** wait, repeat, forever, if, if-else, wait until, repeat until and stop.
+  - **Sensors:** is color, reflection, distance and pressed checks; color, reflected light, distance, yaw/pitch/roll, and timer reporters; reset yaw and reset timer.
+  - **Operators:** + − × ÷, pick random, < > =, and/or/not, join, letter of, length, contains, mod, round, and math functions.
+  - **Variables:** "Make a Variable", plus set, change and the variable reporter.
+  - **My Blocks:** "Make a Block", with number and true/false inputs.
+
+  The running blocks are outlined in yellow.
 - **SPIKE files:**
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
   - **Export:** writes `.llsp3` files that follow the SPIKE App's file layout.
@@ -23,7 +33,8 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 
 - Mission mechanisms (levers, lifts, flips) don't react yet: an arm can press on a model, but the model doesn't change. Arms can push pieces but not pick them up.
 - Arms are limited to straight front/back/left/right directions, with no odd angles, linkages or multi-joint arms.
-- Not simulated yet: SPIKE Python projects, variables, light-matrix images, motor-position conditions, "else" branches, and extra stacks such as "when color" hats.
+- Not simulated yet: SPIKE Python projects, lists, broadcasts, light-matrix images, sounds other than beep, and start blocks other than "when program starts" (such as "when color").
+- Sensor values are simplified. The color sensor reports SPIKE color numbers and rough reflected-light values for the mat. The distance reporter gives 200 when nothing is in range; check that against your real sensor. Pitch and roll are always 0. The force sensor counts as pressed when the front of the robot is pushing on something.
 - Exported files re-import here, but opening them in the SPIKE App hasn't been confirmed yet.
 - There is no live connection to the SPIKE App. Moving programs with files works everywhere. A desktop "virtual hub" helper might be possible later.
 
@@ -60,11 +71,11 @@ The block editor is [Blockly](https://github.com/google/blockly) 11.2.2 (Apache 
 | File | What it holds |
 | --- | --- |
 | `src/field.js` | Mat size, mission model positions, scoring rules |
-| `src/blocks.js` | Block types and defaults |
+| `src/blocks.js` | The block table: every block's wording, inputs and SPIKE file name |
 | `src/workspace.js` | The Blockly block shapes, menu and editor setup |
 | `src/blocks-json.js` | Converting between editor blocks and the simulator's program |
 | `src/robot-view.js` | Drawing the robot on the field and in the robot editor |
-| `src/sim.js` | Drive physics, sensors, collisions and the block runner |
+| `src/sim.js` | Drive physics, sensors, collisions and the program runner |
 | `src/spike-io.js` | `.llsp3` / `.sb3` zip reading and writing, block conversion |
 | `src/app.js` | The page UI |
 

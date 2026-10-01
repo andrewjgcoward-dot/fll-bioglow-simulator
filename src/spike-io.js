@@ -2,9 +2,8 @@
 // An .llsp3 is a zip holding manifest.json, icon.svg and scratch.sb3;
 // scratch.sb3 is another zip holding a Scratch 3 project.json.
 
-import { DIRS4, CODE_COLOR, COLOR_CODE, OPENERS, newBlock } from './blocks.js';
+import { SPEC, lit, walkProgram } from './blocks.js';
 
-const num = (v, d) => { const x = parseFloat(v); return isFinite(x) ? x : d; };
 
 // ---------- zip ----------
 
@@ -95,187 +94,229 @@ export async function importProject(buf) {
   return convertProject(proj);
 }
 
-// Scratch 3 project.json -> { program, warn, cfg }.
-// cfg holds robot settings found in the blocks (drive pair, sensor ports).
-export function convertProject(proj) {
-  const warn = []; const cfg = {}; let blocks = null, hat = null, best = -1, stacks = 0;
-  for (const t of (proj.targets || [])) {
-    const bl = t.blocks || {};
-    for (const id in bl) {
-      const b = bl[id];
-      if (!b || Array.isArray(b) || !b.topLevel) continue;
-      stacks++;
-      if (b.opcode === 'flipperevents_whenProgramStarts') {
-        let n = 0, c = b.next; while (c && bl[c] && n < 1000) { n++; c = bl[c].next; }
-        if (n > best) { best = n; blocks = bl; hat = id; }
-      }
-    }
-  }
-  if (!hat) throw new Error('No “when program starts” stack found.');
-  if (stacks > 1) warn.push('Used the longest “when program starts” stack; ' + (stacks - 1) + ' other stack' + (stacks > 2 ? 's' : '') + ' (loose blocks or other hats) left out.');
+const OPCODE = {};
+for (const [t, s] of Object.entries(SPEC)) for (const op of s.scratch || []) OPCODE[op] = t;
+const procName = (code) => code.replace(/\s*%[sbn]/g, '').trim();
+const procKinds = (code) => (code.match(/%[sbn]/g) || []).map(t => t === '%b' ? 'b' : 'n');
 
-  const out = [];
-  const lit = (b, name) => {
-    const inp = b.inputs && b.inputs[name]; if (!inp) return undefined;
-    for (let i = 1; i < inp.length; i++) {
-      const v = inp[i];
+// Scratch 3 project.json -> { program, warn, cfg }. cfg holds robot settings found in the blocks.
+export function convertProject(proj) {
+  const targets = proj.targets || [];
+  const target = targets.find(t => Object.values(t.blocks || {}).some(b => b && b.opcode === 'flipperevents_whenProgramStarts'));
+  if (!target) throw new Error('No “when program starts” stack found.');
+  const blocks = target.blocks;
+  const warn = [], cfg = {}, skipped = {}, vars = new Set();
+  for (const t of targets) for (const v of Object.values(t.variables || {})) vars.add(v[0]);
+
+  const literal = (v) => lit(v);
+  const shadowValue = (sb) => { const f = sb.fields && Object.keys(sb.fields)[0]; return f ? String(sb.fields[f][0]) : ''; };
+  const note = (op, reporter) => { skipped[op] = (skipped[op] || 0) + 1; return reporter ? { t: 'noteR', op } : { t: 'note', op }; };
+  const learn = (t, n) => {
+    if (t === 'pair' && !cfg.pair) cfg.pair = n.pair;
+    if (['isColor', 'isReflection', 'color', 'reflection'].includes(t) && !cfg.colorPort) cfg.colorPort = n.port;
+    if (['isDistance', 'distance'].includes(t) && !cfg.distPort) cfg.distPort = n.port;
+    if (t === 'isPressed' && !cfg.forcePort) cfg.forcePort = n.port;
+  };
+
+  const menuValue = (b, key) => {
+    const inp = b.inputs && b.inputs[key]; if (!inp) return undefined;
+    for (const v of inp.slice(1)) {
       if (Array.isArray(v)) return String(v[1]);
-      if (typeof v === 'string' && blocks[v]) { const sb = blocks[v]; const f = sb.fields && Object.keys(sb.fields)[0]; if (sb.shadow && f) return String(sb.fields[f][0]); }
+      if (typeof v === 'string' && blocks[v]) return shadowValue(blocks[v]);
     }
     return undefined;
   };
-  const ref = (b, name) => { const inp = b.inputs && b.inputs[name]; const v = inp && inp[1]; return typeof v === 'string' ? blocks[v] : null; };
-  const fld = (b, name) => b.fields && b.fields[name] ? String(b.fields[name][0]) : undefined;
-  const dir = (d) => d === 'backward' ? 'back' : (DIRS4.indexOf(d) >= 0 ? d : 'forward');
-  const add = (t, o) => { const clean = {}; for (const k in o) if (o[k] !== undefined) clean[k] = o[k]; out.push(newBlock(t, clean)); };
-  const skipped = {};
-  const note = (op) => { add('note', { op }); skipped[op] = (skipped[op] || 0) + 1; };
-  const port1 = (b) => lit(b, 'PORT') || 'E';
-
-  const cond = (c, mode) => {
-    const T = (w, i) => mode === 'if' ? i : w;
-    if (!c) return null;
-    if (c.opcode === 'flippersensors_isColor') {
-      const port = lit(c, 'PORT'); if (port && !cfg.colorPort) cfg.colorPort = port;
-      return [T('waitColor', 'ifColor'), { port, color: CODE_COLOR[lit(c, 'VALUE') || lit(c, 'COLOR')] || 'black' }];
-    }
-    if (c.opcode === 'flippersensors_isDistance') {
-      const port = lit(c, 'PORT'); if (port && !cfg.distPort) cfg.distPort = port;
-      const u = fld(c, 'UNIT') || lit(c, 'UNIT') || 'cm'; let v = num(lit(c, 'VALUE'), 10); if (u === 'in') v = Math.round(v * 2.54);
-      return [T('waitDist', 'ifDist'), { port, cmp: fld(c, 'COMPARATOR') || lit(c, 'COMPARATOR') || '<', val: String(v) }];
-    }
-    if (c.opcode === 'operator_gt' || c.opcode === 'operator_lt') {
-      const a = ref(c, 'OPERAND1'), b2 = ref(c, 'OPERAND2'); const isYaw = (x) => x && x.opcode === 'flippersensors_orientationAxis';
-      const cmp = c.opcode === 'operator_gt' ? '>' : '<';
-      if (isYaw(a)) return [T('waitYaw', 'ifYaw'), { cmp, val: lit(c, 'OPERAND2') }];
-      if (isYaw(b2)) return [T('waitYaw', 'ifYaw'), { cmp: cmp === '>' ? '<' : '>', val: lit(c, 'OPERAND1') }];
-    }
-    return null;
+  const exprInput = (b, key, def = '') => {
+    const inp = b.inputs && b.inputs[key];
+    if (!inp) return lit(def);
+    const v = inp[1];
+    if (Array.isArray(v)) return v[0] === 12 ? { t: 'var', name: String(v[1]) } : v[0] === 13 ? note('list', true) : literal(v[1], v[0]);
+    if (typeof v === 'string' && blocks[v]) return blocks[v].shadow ? lit(shadowValue(blocks[v])) : convExpr(blocks[v]);
+    const sh = inp[2];
+    if (Array.isArray(sh)) return literal(sh[1], sh[0]);
+    if (typeof sh === 'string' && blocks[sh]) return lit(shadowValue(blocks[sh]));
+    return lit(def);
+  };
+  const boolInput = (b, key) => {
+    const inp = b.inputs && b.inputs[key];
+    const id = inp && inp[1];
+    return typeof id === 'string' && blocks[id] ? convExpr(blocks[id]) : null;
   };
 
-  const walk = (id) => {
-    while (id && out.length < 600) {
-      const b = blocks[id]; if (!b) break; const op = b.opcode;
-      switch (op) {
-        case 'flippermove_move': add('move', { dir: dir(lit(b, 'DIRECTION')), val: lit(b, 'VALUE'), unit: fld(b, 'UNIT') }); break;
-        case 'flippermove_steer': add('steer', { steer: lit(b, 'STEERING'), val: lit(b, 'VALUE'), unit: fld(b, 'UNIT') }); break;
-        case 'flippermove_startMove': add('startMove', { dir: dir(lit(b, 'DIRECTION')) }); break;
-        case 'flippermove_startSteer': add('startSteer', { steer: lit(b, 'STEERING') }); break;
-        case 'flippermove_stopMove': add('stopMove', {}); break;
-        case 'flippermove_movementSpeed': case 'flippermove_setMovementSpeed': add('speed', { pct: lit(b, 'SPEED') }); break;
-        case 'flippermove_setMovementPair': { const pr = lit(b, 'PAIR'); if (pr && !cfg.pair) cfg.pair = pr; add('pair', { pair: pr }); break; }
-        case 'flippermotor_motorTurnForDirection':
-          add('motor', { port: port1(b), dir: lit(b, 'DIRECTION') === 'counterclockwise' ? 'counterclockwise' : 'clockwise', val: lit(b, 'VALUE'), unit: fld(b, 'UNIT') }); break;
-        case 'flippermotor_motorSetSpeed': add('motorSpeed', { port: port1(b), pct: lit(b, 'SPEED') }); break;
-        case 'flippermotor_motorStop': add('motorStop', { port: port1(b) }); break;
-        case 'flippermotor_motorGoDirectionToPosition':
-          if ((fld(b, 'DIRECTION') || 'shortest') !== 'shortest') warn.push('“go to position” direction ' + fld(b, 'DIRECTION') + ' is simulated as shortest path.');
-          add('motorGoTo', { port: port1(b), val: lit(b, 'POSITION') }); break;
-        case 'flippersound_beepForTime': add('beep', { note: lit(b, 'NOTE'), val: lit(b, 'DURATION') }); break;
-        case 'control_wait': add('wait', { val: lit(b, 'DURATION') }); break;
-        case 'control_wait_until': {
-          const c = cond(ref(b, 'CONDITION'), 'wait');
-          if (c) add(c[0], c[1]); else note('wait until ' + ((ref(b, 'CONDITION') || {}).opcode || '(empty)'));
-          break;
-        }
-        case 'control_if': case 'control_if_else': {
-          const c = cond(ref(b, 'CONDITION'), 'if');
-          if (!c) { note('if ' + ((ref(b, 'CONDITION') || {}).opcode || '(empty)')); break; }
-          add(c[0], c[1]); walk(b.inputs.SUBSTACK && b.inputs.SUBSTACK[1]); add('end', {});
-          if (op === 'control_if_else') warn.push('An “else” branch was left out (not supported yet).');
-          break;
-        }
-        case 'control_repeat': add('repeat', { val: lit(b, 'TIMES') }); walk(b.inputs.SUBSTACK && b.inputs.SUBSTACK[1]); add('end', {}); break;
-        case 'control_forever': add('repeat', { val: '1000' }); walk(b.inputs.SUBSTACK && b.inputs.SUBSTACK[1]); add('end', {}); warn.push('“forever” became “repeat 1000”.'); break;
-        case 'flippersensors_resetYaw': case 'flippersensors_resetYawAxis': case 'flippersensors_setYaw': add('resetYaw', {}); break;
-        case 'flipperlight_lightDisplayText': add('show', { text: lit(b, 'TEXT') }); break;
-        default: note(op);
-      }
-      id = b.next;
+  const fromSpec = (b, t) => {
+    const spec = SPEC[t], n = { t };
+    for (const [k, d] of Object.entries(spec.p || {})) {
+      if (d.kind === 'menu') { const v = menuValue(b, d.key); n[k] = v === undefined ? d.opts[0] : d.map ? d.map.from(v) : v; }
+      else if (d.kind === 'field') { const v = b.fields && b.fields[d.key] ? String(b.fields[d.key][0]) : d.opts[0]; n[k] = d.map ? d.map.from(v) : v; }
+      else if (d.kind === 'bool') n[k] = boolInput(b, d.key);
+      else n[k] = exprInput(b, d.key, d.def);
     }
+    if (spec.body) n.body = stmtList(b.inputs && b.inputs[spec.body] && b.inputs[spec.body][1]);
+    if (spec.else) n.else = stmtList(b.inputs && b.inputs[spec.else] && b.inputs[spec.else][1]);
+    learn(t, n);
+    return n;
   };
-  walk(blocks[hat].next);
-  // Common mix-up: "if sensor … then stop moving" checks once and moves on; it doesn't wait for the line.
-  const checkOnce = out.filter((b, i) => (b.t === 'ifColor' || b.t === 'ifDist') && out[i + 1] && out[i + 1].t === 'stopMove').length;
+
+  const convExpr = (b) => {
+    if (b.opcode === 'argument_reporter_string_number' || b.opcode === 'argument_reporter_boolean') return { t: 'arg', name: String(b.fields.VALUE[0]) };
+    if (b.opcode === 'data_variable') return { t: 'var', name: String(b.fields.VARIABLE[0]) };
+    const t = OPCODE[b.opcode];
+    if (!t || !['n', 'b'].includes(SPEC[t].shape)) return note(b.opcode, true);
+    return fromSpec(b, t);
+  };
+
+  // My Blocks: definitions first, so calls know their parameter names.
+  const procs = {}, byCode = {};
+  for (const b of Object.values(blocks)) {
+    if (!b || b.opcode !== 'procedures_definition') continue;
+    const proto = blocks[b.inputs.custom_block[1]];
+    if (!proto || !proto.mutation) continue;
+    const code = proto.mutation.proccode, names = JSON.parse(proto.mutation.argumentnames || '[]'), kinds = procKinds(code);
+    byCode[code] = { name: procName(code), params: names.map((name, i) => ({ name: String(name), kind: kinds[i] || 'n' })), defId: b };
+  }
+
+  const convStmt = (b) => {
+    if (b.opcode === 'procedures_call') {
+      const code = b.mutation && b.mutation.proccode, def = byCode[code];
+      if (!def) return note('procedures_call');
+      const ids = JSON.parse(b.mutation.argumentids || '[]'), args = {};
+      def.params.forEach((p, i) => { args[p.name] = p.kind === 'b' ? boolInput(b, ids[i]) : exprInput(b, ids[i], ''); });
+      return { t: 'call', name: def.name, args };
+    }
+    if (b.opcode === 'data_setvariableto' || b.opcode === 'data_changevariableby') {
+      const t = b.opcode === 'data_setvariableto' ? 'setVar' : 'changeVar', name = String(b.fields.VARIABLE[0]);
+      vars.add(name);
+      return { t, name, val: exprInput(b, 'VALUE', t === 'setVar' ? '0' : '1') };
+    }
+    const t = OPCODE[b.opcode];
+    if (!t || SPEC[t].shape) return note(b.opcode);
+    return fromSpec(b, t);
+  };
+  function stmtList(id) {
+    const out = [];
+    while (id && blocks[id] && out.length < 2000) { out.push(convStmt(blocks[id])); id = blocks[id].next; }
+    return out;
+  }
+
+  for (const def of Object.values(byCode)) procs[def.name] = { params: def.params, body: stmtList(def.defId.next) };
+
+  const tops = Object.values(blocks).filter(b => b && !Array.isArray(b) && b.topLevel).sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
+  const stacks = tops.filter(b => b.opcode === 'flipperevents_whenProgramStarts').map(h => stmtList(h.next)).filter(s => s.length);
+  const others = tops.filter(b => b.opcode !== 'flipperevents_whenProgramStarts' && b.opcode !== 'procedures_definition');
+  if (!stacks.length) stacks.push([]);
+  if (stacks.length > 1) warn.push(stacks.length + ' “when program starts” stacks run at the same time, like on the hub.');
+  if (others.length) warn.push(others.length + ' other stack' + (others.length > 1 ? 's' : '') + ' (loose blocks or other start blocks such as “when color”) left out.');
+
+  const program = { stacks, procs, vars: [...vars] };
+  // Common mix-up: "if sensor … then stop moving" checks once, right away; it doesn't wait for the line.
+  let checkOnce = 0;
+  walkProgram(program, (n) => { if (n.t === 'if' && n.cond && ['isColor', 'isDistance', 'isReflection'].includes(n.cond.t) && n.body.length === 1 && n.body[0].t === 'stopMove') checkOnce++; });
   if (checkOnce) warn.push('Tip: “if … then stop moving” checks the sensor once, right away' + (checkOnce > 1 ? ' (' + checkOnce + ' places)' : '') + '. To stop on a line, use “start moving”, then “wait until … is color”, then “stop moving”.');
   const sk = Object.keys(skipped);
   if (sk.length) warn.push('Shown in gray, not simulated yet: ' + sk.map(k => k + (skipped[k] > 1 ? ' ×' + skipped[k] : '')).join(', ') + '.');
-  return { program: out, warn, cfg };
+  return { program, warn, cfg };
 }
 
 // ---------- export ----------
 
-// Simulator program -> Scratch 3 project.json. Gray (unsupported) blocks are dropped.
-export function buildProject(program) {
-  const blocks = {}; let n = 0;
-  const nid = () => 'sim' + (++n) + Math.random().toString(36).slice(2, 8);
+// Program tree -> Scratch 3 project.json. Gray (unsupported) blocks are dropped.
+export function buildProject(prog) {
+  const blocks = {}; let n = 0, dropped = 0;
+  const nid = () => 'sim' + (++n) + Math.random().toString(36).slice(2, 7);
   const mk = (opcode, parent, extra) => { const id = nid(); blocks[id] = Object.assign({ opcode, next: null, parent, inputs: {}, fields: {}, shadow: false, topLevel: false }, extra || {}); return id; };
-  const sh = (parent, opcode, value) => { const id = mk(opcode, parent, { shadow: true }); blocks[id].fields['field_' + opcode] = [String(value), null]; return [1, id]; };
-  const numIn = (v, kind) => [1, [kind || 4, String(v)]];
-  const hat = mk('flipperevents_whenProgramStarts', null, { topLevel: true, x: 0, y: 0 });
-  let dropped = 0;
+  const shadow = (parent, opcode, value) => { const id = mk(opcode, parent, { shadow: true }); blocks[id].fields['field_' + opcode] = [String(value), null]; return id; };
 
-  const condBlock = (b, parent) => {
-    if (b.t === 'waitColor' || b.t === 'ifColor') {
-      const c = mk('flippersensors_isColor', parent);
-      blocks[c].inputs.PORT = sh(c, 'flippersensors_color-sensor-selector', b.port);
-      blocks[c].inputs.VALUE = sh(c, 'flippersensors_color-selector', COLOR_CODE[b.color]);
-      return c;
+  const varIds = {}; const variables = {};
+  const allVars = new Set(prog.vars || []);
+  walkProgram(prog, (x) => { if (x.t === 'var' || x.t === 'setVar' || x.t === 'changeVar') allVars.add(x.name); });
+  [...allVars].forEach((name, i) => { varIds[name] = 'simvar' + i; variables['simvar' + i] = [name, 0]; });
+
+  let argKinds = {};
+  const defaultInput = (parent, d) => d.shadow ? shadow(parent, d.shadow, d.def) : [d.numType || 10, String(d.def ?? '')];
+  const valueInput = (parent, d, e) => {
+    if (d.kind === 'bool') return e && e.t !== 'noteR' ? [2, exprBlock(e, parent)] : undefined;
+    if (!e || e.t === 'num' || e.t === 'text' || e.t === 'noteR') {
+      const v = e && e.t !== 'noteR' ? e.v : d.def ?? '';
+      return d.shadow ? [1, shadow(parent, d.shadow, v)] : [1, [d.numType || 10, String(v)]];
     }
-    if (b.t === 'waitDist' || b.t === 'ifDist') {
-      const c = mk('flippersensors_isDistance', parent);
-      blocks[c].inputs.PORT = sh(c, 'flippersensors_distance-sensor-selector', b.port);
-      blocks[c].inputs.VALUE = numIn(b.val);
-      blocks[c].fields.COMPARATOR = [b.cmp, null]; blocks[c].fields.UNIT = ['cm', null];
-      return c;
-    }
-    const c = mk(b.cmp === '<' ? 'operator_lt' : 'operator_gt', parent);
-    const y = mk('flippersensors_orientationAxis', c); blocks[y].fields.AXIS = ['yaw', null];
-    blocks[c].inputs.OPERAND1 = [3, y, [10, '']]; blocks[c].inputs.OPERAND2 = [1, [10, String(b.val)]];
-    return c;
+    if (e.t === 'var') return [3, [12, e.name, varIds[e.name]], defaultInput(parent, d)];
+    return [3, exprBlock(e, parent), defaultInput(parent, d)];
   };
-
-  // One frame per open if/repeat: prev = last block placed, owner = the C-block, first = no child yet.
-  const frames = [{ prev: hat, owner: null, first: false }];
-  for (const b of program) {
-    const fr = frames[frames.length - 1];
-    if (b.t === 'end') { if (frames.length > 1) frames.pop(); continue; }
-    const parent = fr.first ? fr.owner : fr.prev;
-    let id = null;
-    const blk = (op) => { id = mk(op, parent); return blocks[id]; };
-    switch (b.t) {
-      case 'move': { const k = blk('flippermove_move'); k.inputs.DIRECTION = sh(id, 'flippermove_custom-icon-direction', b.dir); k.inputs.VALUE = numIn(b.val); k.fields.UNIT = [b.unit, null]; break; }
-      case 'steer': { const k = blk('flippermove_steer'); k.inputs.STEERING = sh(id, 'flippermove_rotation-wheel', b.steer); k.inputs.VALUE = numIn(b.val); k.fields.UNIT = [b.unit, null]; break; }
-      case 'startMove': { const k = blk('flippermove_startMove'); k.inputs.DIRECTION = sh(id, 'flippermove_custom-icon-direction', b.dir); break; }
-      case 'startSteer': { const k = blk('flippermove_startSteer'); k.inputs.STEERING = sh(id, 'flippermove_rotation-wheel', b.steer); break; }
-      case 'stopMove': blk('flippermove_stopMove'); break;
-      case 'speed': { const k = blk('flippermove_movementSpeed'); k.inputs.SPEED = numIn(b.pct); break; }
-      case 'pair': { const k = blk('flippermove_setMovementPair'); k.inputs.PAIR = sh(id, 'flippermove_movement-port-selector', b.pair); break; }
-      case 'motor': { const k = blk('flippermotor_motorTurnForDirection'); k.inputs.PORT = sh(id, 'flippermotor_multiple-port-selector', b.port); k.inputs.DIRECTION = sh(id, 'flippermotor_custom-icon-direction', b.dir); k.inputs.VALUE = numIn(b.val); k.fields.UNIT = [b.unit, null]; break; }
-      case 'motorSpeed': { const k = blk('flippermotor_motorSetSpeed'); k.inputs.PORT = sh(id, 'flippermotor_multiple-port-selector', b.port); k.inputs.SPEED = numIn(b.pct); break; }
-      case 'motorStop': { const k = blk('flippermotor_motorStop'); k.inputs.PORT = sh(id, 'flippermotor_multiple-port-selector', b.port); break; }
-      case 'motorGoTo': { const k = blk('flippermotor_motorGoDirectionToPosition'); k.inputs.PORT = sh(id, 'flippermotor_multiple-port-selector', b.port); k.inputs.POSITION = sh(id, 'flippermotor_custom-angle', b.val); k.fields.DIRECTION = ['shortest', null]; break; }
-      case 'beep': { const k = blk('flippersound_beepForTime'); k.inputs.NOTE = sh(id, 'flippersound_custom-piano', b.note); k.inputs.DURATION = numIn(b.val); break; }
-      case 'wait': { const k = blk('control_wait'); k.inputs.DURATION = numIn(b.val, 5); break; }
-      case 'waitColor': case 'waitDist': case 'waitYaw': { const k = blk('control_wait_until'); k.inputs.CONDITION = [2, condBlock(b, id)]; break; }
-      case 'ifColor': case 'ifDist': case 'ifYaw': { const k = blk('control_if'); k.inputs.CONDITION = [2, condBlock(b, id)]; break; }
-      case 'repeat': { const k = blk('control_repeat'); k.inputs.TIMES = numIn(b.val, 6); break; }
-      case 'resetYaw': blk('flippersensors_resetYaw'); break;
-      case 'show': { const k = blk('flipperlight_lightDisplayText'); k.inputs.TEXT = [1, [10, String(b.text)]]; break; }
-      default: dropped++; break;
+  const fill = (id, x) => {
+    const spec = SPEC[x.t], b = blocks[id];
+    for (const [k, d] of Object.entries(spec.p || {})) {
+      const v = x[k];
+      if (d.kind === 'menu') b.inputs[d.key] = [1, shadow(id, d.shadow, d.map ? d.map.to(v) : v)];
+      else if (d.kind === 'field') b.fields[d.key] = [d.map ? d.map.to(v) : v, null];
+      else { const inp = valueInput(id, d, v); if (inp) b.inputs[d.key] = inp; }
     }
-    if (!id) continue;
-    if (fr.first) { blocks[fr.owner].inputs.SUBSTACK = [2, id]; fr.first = false; } else blocks[fr.prev].next = id;
-    fr.prev = id;
-    if (OPENERS[b.t]) frames.push({ prev: id, owner: id, first: true });
+    for (const [k, v] of Object.entries(spec.fixed || {})) b.fields[k] = [v, null];
+    if (spec.body) { const first = chain(x.body || [], id); if (first) b.inputs[spec.body] = [2, first]; }
+    if (spec.else) { const first = chain(x.else || [], id); if (first) b.inputs[spec.else] = [2, first]; }
+  };
+  const exprBlock = (e, parent) => {
+    if (e.t === 'arg') { const k = argKinds[e.name] === 'b' ? 'argument_reporter_boolean' : 'argument_reporter_string_number'; const id = mk(k, parent); blocks[id].fields.VALUE = [e.name, null]; return id; }
+    const id = mk(SPEC[e.t].scratch[0], parent); fill(id, e); return id;
+  };
+  const procCode = (name, p) => name + p.params.map(q => q.kind === 'b' ? ' %b' : ' %s').join('');
+  const procArgIds = {};
+  Object.entries(prog.procs || {}).forEach(([name, p], i) => { procArgIds[name] = p.params.map((_, j) => 'simarg' + i + '_' + j); });
+
+  const stmtBlock = (x, parent) => {
+    if (x.t === 'call') {
+      const p = prog.procs && prog.procs[x.name]; if (!p) { dropped++; return null; }
+      const ids = procArgIds[x.name];
+      const id = mk('procedures_call', parent, { mutation: { tagName: 'mutation', children: [], proccode: procCode(x.name, p), argumentids: JSON.stringify(ids), warp: 'false' } });
+      p.params.forEach((q, i) => { const inp = valueInput(id, q.kind === 'b' ? { kind: 'bool' } : { kind: 'text', numType: 10, def: '' }, x.args && x.args[q.name]); if (inp) blocks[id].inputs[ids[i]] = inp; });
+      return id;
+    }
+    if (x.t === 'setVar' || x.t === 'changeVar') {
+      const id = mk(x.t === 'setVar' ? 'data_setvariableto' : 'data_changevariableby', parent);
+      blocks[id].fields.VARIABLE = [x.name, varIds[x.name]];
+      blocks[id].inputs.VALUE = valueInput(id, SPEC[x.t].p.val, x.val);
+      return id;
+    }
+    const spec = SPEC[x.t];
+    if (!spec || !spec.scratch || spec.shape) { dropped++; return null; }
+    const id = mk(spec.scratch[0], parent); fill(id, x); return id;
+  };
+  // Link a statement list under `parent`; returns the first block's id.
+  function chain(list, parent) {
+    let first = null, prev = null;
+    for (const x of list) {
+      const id = stmtBlock(x, prev || parent);
+      if (!id) continue;
+      if (prev) blocks[prev].next = id; else first = id;
+      prev = id;
+    }
+    return first;
   }
+
+  (prog.stacks || []).forEach((stack, i) => {
+    const hat = mk('flipperevents_whenProgramStarts', null, { topLevel: true, x: i * 420, y: 0 });
+    const first = chain(stack, hat); if (first) blocks[hat].next = first;
+  });
+  Object.entries(prog.procs || {}).forEach(([name, p], i) => {
+    argKinds = Object.fromEntries(p.params.map(q => [q.name, q.kind]));
+    const ids = procArgIds[name];
+    const def = mk('procedures_definition', null, { topLevel: true, x: i * 420, y: 600 });
+    const proto = mk('procedures_prototype', def, { shadow: true, mutation: { tagName: 'mutation', children: [], proccode: procCode(name, p), argumentids: JSON.stringify(ids), argumentnames: JSON.stringify(p.params.map(q => q.name)), argumentdefaults: JSON.stringify(p.params.map(q => q.kind === 'b' ? 'false' : '')), warp: 'false' } });
+    p.params.forEach((q, j) => {
+      const a = mk(q.kind === 'b' ? 'argument_reporter_boolean' : 'argument_reporter_string_number', proto, { shadow: true });
+      blocks[a].fields.VALUE = [q.name, null];
+      blocks[proto].inputs[ids[j]] = [1, a];
+    });
+    blocks[def].inputs.custom_block = [1, proto];
+    const first = chain(p.body, def); if (first) blocks[def].next = first;
+    argKinds = {};
+  });
 
   const EMPTY = 'd41d8cd98f00b204e9800998ecf8427e'; // md5 of an empty file
   const costume = (name, cx, cy) => ({ assetId: EMPTY, name, bitmapResolution: 1, md5ext: EMPTY + '.svg', dataFormat: 'svg', rotationCenterX: cx, rotationCenterY: cy });
   const project = {
     targets: [
       { isStage: true, name: 'Stage', variables: {}, lists: {}, broadcasts: {}, blocks: {}, comments: {}, currentCostume: 0, costumes: [costume('backdrop1', 47, 55)], sounds: [], volume: 100, layerOrder: 0, tempo: 60, videoTransparency: 50, videoState: 'on', textToSpeechLanguage: null },
-      { isStage: false, name: 'BioGlowSim', variables: {}, lists: {}, broadcasts: {}, blocks, comments: {}, currentCostume: 0, costumes: [costume('costume1', 240, 180)], sounds: [], volume: 100, layerOrder: 1, visible: true, x: 0, y: 0, size: 100, direction: 90, draggable: false, rotationStyle: 'all around' }
+      { isStage: false, name: 'BioGlowSim', variables, lists: {}, broadcasts: {}, blocks, comments: {}, currentCostume: 0, costumes: [costume('costume1', 240, 180)], sounds: [], volume: 100, layerOrder: 1, visible: true, x: 0, y: 0, size: 100, direction: 90, draggable: false, rotationStyle: 'all around' }
     ],
     monitors: [],
     extensions: ['flipperevents', 'flippermove', 'flippermotor', 'flippersensors', 'flipperlight', 'flippersound'],

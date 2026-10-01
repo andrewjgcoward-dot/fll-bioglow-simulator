@@ -4,13 +4,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { Sim } from '../src/sim.js';
-import { newBlock, PALETTE } from '../src/blocks.js';
+import { flatToAst, SPEC, node, lit } from '../src/blocks.js';
+import { programToJson, jsonToProgram } from '../src/blocks-json.js';
 import { importProject, exportLlsp3, makeZip, buildProject } from '../src/spike-io.js';
 import { MISSIONS, totalScore } from '../src/field.js';
 
-const prog = (list) => list.map(([t, o]) => newBlock(t, o));
+const prog = (list) => flatToAst(list.map(([t, o]) => Object.assign({ t }, o)));
 const runToEnd = (sim, program, limit = 60) => { sim.run(program); let t = 0; while (sim.running && t < limit) { sim.advance(0.02); t += 0.02; } return t; };
-const strip = (p) => p.filter(b => b.t !== 'note').map(({ id, ...r }) => r);
+// Program without block ids and gray note statements (export leaves those out).
+const strip = (p) => JSON.parse(JSON.stringify(p, (k, v) => k === 'id' ? undefined : Array.isArray(v) ? v.filter(x => !(x && x.t === 'note')) : v));
 const ab = (u8) => u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
 
 test('moving forward 20 cm goes 20 cm', () => {
@@ -164,19 +166,123 @@ test('interrupting outside home during a match costs a token', () => {
   assert.equal(sim.stop(), true);
 });
 
-test('every palette block survives export and re-import', async () => {
-  const all = [];
-  for (const g of PALETTE) for (const [t] of g.items) { if (t === 'end') continue; all.push(newBlock(t)); if (t.startsWith('if') || t === 'repeat') all.push(newBlock('end')); }
+// One of every block: statements in a stack, each reporter inside a slot, plus variables and a My Block.
+function everything() {
+  const main = [];
+  const sensorCond = () => node('isColor', { port: 'C', color: 'red' });
+  for (const [t, s] of Object.entries(SPEC)) {
+    if (s.shape || s.end || ['note', 'setVar', 'changeVar'].includes(t)) continue;
+    const n = node(t);
+    if ('cond' in n) n.cond = sensorCond();
+    if (n.body) n.body = [node('stopMove')];
+    if (n.else) n.else = [node('resetTimer')];
+    main.push(n);
+  }
+  for (const [t, s] of Object.entries(SPEC)) {
+    if (!['n', 'b'].includes(s.shape) || t === 'noteR') continue;
+    const e = node(t);
+    for (const [k, d] of Object.entries(s.p || {})) if (d.kind === 'bool') e[k] = node('isPressed', { port: 'F' });
+    main.push(s.shape === 'b' ? node('if', { cond: e, body: [node('beep')] }) : node('show', { text: e }));
+  }
+  main.push({ t: 'setVar', name: 'speed', val: lit(30) });
+  main.push({ t: 'changeVar', name: 'speed', val: { t: 'add', a: { t: 'var', name: 'speed' }, b: lit(5) } });
+  main.push({ t: 'call', name: 'jump', args: { height: { t: 'var', name: 'speed' }, fast: node('isPressed', { port: 'F' }) } });
+  return {
+    stacks: [main, [node('forever', { body: [node('wait')] })], [node('stop', { opt: 'this stack' })]],
+    procs: { jump: { params: [{ name: 'height', kind: 'n' }, { name: 'fast', kind: 'b' }], body: [node('ifElse', { cond: { t: 'arg', name: 'fast' }, body: [node('move', { val: { t: 'arg', name: 'height' } })], else: [node('wait')] })] } },
+    vars: ['speed']
+  };
+}
+
+test('every block survives SPIKE export and re-import', async () => {
+  const all = everything();
   const { zip, dropped } = exportLlsp3(all, 'all blocks');
   assert.equal(dropped, 0);
   const back = await importProject(ab(zip));
   assert.deepEqual(strip(back.program), strip(all));
 });
 
-test('nested if inside repeat keeps its structure', async () => {
-  const p = prog([['repeat', { val: '2' }], ['ifDist', { port: 'D', cmp: '<', val: '5' }], ['stopMove', {}], ['end', {}], ['wait', { val: '0.1' }], ['end', {}], ['show', { text: 'done' }]]);
-  const back = await importProject(ab(exportLlsp3(p, 'n').zip));
-  assert.deepEqual(strip(back.program), strip(p));
+test('every block survives the block editor format', () => {
+  const all = everything();
+  all.stacks[0].push({ t: 'note', op: 'flipperlight_lightDisplayImageOn' }, node('show', { text: { t: 'noteR', op: 'flippersensors_force' } }));
+  const back = jsonToProgram(programToJson(all));
+  assert.deepEqual(JSON.parse(JSON.stringify(back.program)), JSON.parse(JSON.stringify(all)));
+});
+
+const runProgram = (program, opts = {}) => { const sim = new Sim(opts.cfg || {}, { x: 1000, y: 600, h: 0 }, []); sim.cfg.collide = false; runToEnd(sim, program, opts.limit || 30); return sim; };
+const v = (name) => ({ t: 'var', name });
+
+test('operators and variables follow Scratch rules', () => {
+  const sim = runProgram({ stacks: [[
+    { t: 'setVar', name: 'x', val: { t: 'mul', a: { t: 'add', a: lit(3), b: lit(4) }, b: lit(2) } },
+    { t: 'changeVar', name: 'x', val: lit(-4) },
+    { t: 'setVar', name: 'word', val: { t: 'join', a: lit('robot'), b: v('x') } },
+    { t: 'setVar', name: 'third', val: node('letterOf', { a: 3, b: v('word') }) },
+    { t: 'setVar', name: 'cmp', val: node('gt', { a: lit('10'), b: lit('9') }) },
+    { t: 'setVar', name: 'mod', val: node('mod', { a: -7, b: 3 }) },
+    { t: 'setVar', name: 'r', val: node('random', { a: 1, b: 6 }) },
+    node('show', { text: v('word') })
+  ]], procs: {}, vars: [] });
+  assert.equal(sim.vars.x, 10);
+  assert.equal(sim.vars.word, 'robot10');
+  assert.equal(sim.vars.third, 'b');
+  assert.equal(sim.vars.cmp, true, '"10" > "9" compares as numbers');
+  assert.equal(sim.vars.mod, 2, 'mod takes the sign of the divisor');
+  assert.ok(Number.isInteger(sim.vars.r) && sim.vars.r >= 1 && sim.vars.r <= 6);
+  assert.equal(sim.display, 'robot10');
+});
+
+test('if-else, repeat until and stop all', () => {
+  const sim = runProgram({ stacks: [[
+    { t: 'setVar', name: 'n', val: lit(0) },
+    node('repeatUntil', { cond: node('gt', { a: v('n'), b: '4' }), body: [{ t: 'changeVar', name: 'n', val: lit(1) }] }),
+    node('ifElse', { cond: node('eq', { a: v('n'), b: '5' }), body: [node('show', { text: 'five' })], else: [node('show', { text: 'other' })] }),
+    node('stop', { opt: 'all' }),
+    node('show', { text: 'never' })
+  ]], procs: {}, vars: [] });
+  assert.equal(sim.vars.n, 5);
+  assert.equal(sim.display, 'five');
+  assert.ok(sim.logLines.some(l => l.includes('stop all')));
+});
+
+test('My Blocks take inputs, and runaway recursion is stopped', () => {
+  const sim = runProgram({ stacks: [[{ t: 'call', name: 'twice', args: { n: lit(21) } }]], procs: {
+    twice: { params: [{ name: 'n', kind: 'n' }], body: [{ t: 'setVar', name: 'out', val: node('mul', { a: { t: 'arg', name: 'n' }, b: 2 }) }] }
+  }, vars: [] });
+  assert.equal(sim.vars.out, 42);
+  const loop = runProgram({ stacks: [[{ t: 'call', name: 'again', args: {} }]], procs: { again: { params: [], body: [{ t: 'call', name: 'again', args: {} }] } }, vars: [] });
+  assert.ok(loop.logLines.some(l => l.includes('calls itself too many times')));
+});
+
+test('several "when program starts" stacks run at the same time', () => {
+  const sim = new Sim({}, { x: 1000, y: 300, h: 0 }, []);
+  sim.cfg.collide = false;
+  const t = runToEnd(sim, { stacks: [
+    [node('move', { dir: 'forward', val: 20, unit: 'cm' })],
+    [node('motor', { port: 'E', dir: 'clockwise', val: 2, unit: 'seconds' })]
+  ], procs: {}, vars: [] });
+  assert.ok(Math.abs(sim.pose.y - 500) < 3, 'drove 20 cm: ' + sim.pose.y);
+  assert.ok(t < 2.3, 'both together take about 2 s, not the sum: ' + t);
+});
+
+test('sensor and motor reporters', () => {
+  const sim = runProgram({ stacks: [[
+    node('motor', { port: 'F', dir: 'clockwise', val: 450, unit: 'degrees' }),
+    { t: 'setVar', name: 'pos', val: node('motorPos', { port: 'F' }) },
+    { t: 'setVar', name: 'rel', val: node('motorRel', { port: 'F' }) },
+    node('startMove', { dir: 'clockwise' }),
+    node('waitUntil', { cond: node('gt', { a: node('angle', { axis: 'yaw' }), b: '45' }) }),
+    node('stopMove'),
+    { t: 'setVar', name: 'yaw', val: node('angle', { axis: 'yaw' }) },
+    node('wait', { val: 0.5 }),
+    { t: 'setVar', name: 'time', val: node('timer') },
+    { t: 'setVar', name: 'refl', val: node('reflection', { port: 'C' }) }
+  ]], procs: {}, vars: [] }, { cfg: { arms: [] } });
+  assert.equal(sim.vars.pos, 90);
+  assert.equal(sim.vars.rel, 450);
+  assert.ok(sim.vars.yaw >= 45 && sim.vars.yaw < 50, 'yaw ' + sim.vars.yaw);
+  assert.ok(sim.vars.time > 0.5, 'timer ' + sim.vars.time);
+  assert.equal(sim.vars.refl, 25, 'green mat reflects about 25 %');
 });
 
 test('reads deflate-compressed files like the SPIKE app writes', async () => {
@@ -198,8 +304,8 @@ test('reads deflate-compressed files like the SPIKE app writes', async () => {
   const sb3 = deflateZip([['project.json', Buffer.from(JSON.stringify(project))]]);
   const llsp3 = deflateZip([['manifest.json', Buffer.from('{}')], ['scratch.sb3', sb3]]);
   const res = await importProject(ab(llsp3));
-  assert.equal(res.program.length, 1);
-  assert.equal(res.program[0].dir, 'back');
+  assert.equal(res.program.stacks[0].length, 1);
+  assert.equal(res.program.stacks[0][0].dir, 'back');
 });
 
 test('rejects SPIKE Python projects with a clear message', async () => {
@@ -225,35 +331,25 @@ test('imports and round-trips local SPIKE files', { skip: !fixtures && 'set SPIK
   for (const f of files) {
     const res = await importProject(ab(fs.readFileSync(f)));
     const back = await importProject(ab(exportLlsp3(res.program, 'rt').zip));
-    assert.deepEqual(strip(back.program), strip(res.program), path.basename(f));
+    // Gray reporters export as plain values, so only compare programs without them.
+    if (!JSON.stringify(res.program).includes('"noteR"')) assert.deepEqual(strip(back.program), strip(res.program), path.basename(f));
     const sim = new Sim(res.cfg, { x: 240, y: 240, h: 0 });
     runToEnd(sim, res.program, 150);
   }
   console.log(`  checked ${files.length} file(s)`);
 });
 
-import { programToJson, jsonToProgram } from '../src/blocks-json.js';
-
-test('programs survive the trip through the block editor format', () => {
-  const all = [];
-  for (const g of PALETTE) for (const [t] of g.items) { if (t === 'end') continue; all.push(newBlock(t)); if (t.startsWith('if') || t === 'repeat') all.push(newBlock('end')); }
-  all.push(newBlock('note', { op: 'flipperlight_lightDisplayImageOn' }));
-  const nested = prog([['repeat', { val: '2' }], ['ifColor', { port: 'C', color: 'black' }], ['stopMove', {}], ['end', {}], ['wait', { val: '0.5' }], ['end', {}], ['show', { text: 'ok' }]]);
-  for (const p of [all, nested]) {
-    const back = jsonToProgram(programToJson(p));
-    assert.deepEqual(back.program.map(({ id, ...r }) => r), p.map(({ id, ...r }) => r));
-    assert.equal(back.ids.length, back.program.length);
-  }
-});
-
-test('the block editor ignores loose blocks and treats an empty "if" as false', () => {
+test('the block editor ignores loose blocks and reads an empty "if" as false', () => {
   const json = { blocks: { languageVersion: 0, blocks: [
-    { type: 'sim_start', id: 'h', x: 0, y: 0, next: { block: { type: 'sim_if', id: 'i', inputs: { DO: { block: { type: 'sim_stopMove', id: 's' } } }, next: { block: { type: 'sim_wait', id: 'w', fields: { val: 2 } } } } } },
-    { type: 'sim_move', id: 'loose', x: 300, y: 300, fields: { dir: 'back', val: 5, unit: 'cm' } }
+    { type: 'sim_start', id: 'h', x: 0, y: 0, next: { block: { type: 'sim_if', id: 'i', inputs: { DO: { block: { type: 'sim_stopMove', id: 's' } } }, next: { block: { type: 'sim_wait', id: 'w', inputs: { val: { shadow: { type: 'sim_num', fields: { V: 2 } } } } } } } } },
+    { type: 'sim_move', id: 'loose', x: 300, y: 300, fields: { dir: 'back', unit: 'cm' } }
   ] } };
-  const { program, ids, warn } = jsonToProgram(json);
-  assert.deepEqual(program.map(b => b.t), ['wait']);
-  assert.equal(program[0].val, '2');
-  assert.deepEqual(ids, ['w']);
-  assert.ok(warn.some(w => w.includes('no condition')));
+  const { program, warn } = jsonToProgram(json);
+  assert.deepEqual(program.stacks[0].map(b => b.t), ['if', 'wait']);
+  assert.equal(program.stacks[0][0].cond, null);
+  assert.deepEqual(program.stacks[0][1].val, { t: 'num', v: '2' });
+  assert.deepEqual(program.stacks[0].map(b => b.id), ['i', 'w']);
+  assert.ok(warn.some(w => w.includes('empty condition')));
+  const sim = runProgram(program);
+  assert.ok(!sim.logLines.some(l => l.includes('Bumped')), 'the stop block inside the empty if did not run');
 });

@@ -1,5 +1,5 @@
 import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore } from './field.js';
-import { PORTS, PAIRS, newBlock } from './blocks.js';
+import { PORTS, PAIRS, DEMO, flatToAst, emptyProgram } from './blocks.js';
 import { programToJson, jsonToProgram } from './blocks-json.js';
 import { createWorkspace, registerPorts } from './workspace.js';
 import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside } from './sim.js';
@@ -7,28 +7,27 @@ import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 
 const SWATCH = { black: '#111111', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
-const DEMO = [
-  ['speed', { pct: '50' }], ['move', { dir: 'forward', val: '30', unit: 'cm' }],
-  ['startMove', { dir: 'clockwise' }], ['waitYaw', { cmp: '>', val: '88' }], ['stopMove', {}],
-  ['startMove', { dir: 'forward' }], ['waitDist', { port: 'D', cmp: '<', val: '8' }], ['stopMove', {}],
-  ['motor', { port: 'E', dir: 'clockwise', val: '90', unit: 'degrees' }], ['wait', { val: '0.5' }],
-  ['motor', { port: 'E', dir: 'counterclockwise', val: '90', unit: 'degrees' }],
-  ['move', { dir: 'back', val: '15', unit: 'cm' }],
-  ['startMove', { dir: 'counterclockwise' }], ['waitYaw', { cmp: '<', val: '2' }], ['stopMove', {}],
-  ['move', { dir: 'back', val: '32', unit: 'cm' }], ['show', { text: 'Home' }]
-];
-const demoProgram = () => DEMO.map(([t, o]) => newBlock(t, o));
+const demoProgram = () => DEMO();
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---------- state (program, robot and score survive a reload) ----------
 
-const STORE = 'bioglow-sim-v1';
-function load() { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } }
+const STORE = 'bioglow-sim-v2';
+function load() {
+  try {
+    const v2 = JSON.parse(localStorage.getItem(STORE));
+    if (v2) return v2;
+    // Carry over settings (and the program) saved by the previous version.
+    const v1 = JSON.parse(localStorage.getItem('bioglow-sim-v1'));
+    if (v1) { delete v1.ws; if (Array.isArray(v1.program)) v1.program = flatToAst(v1.program); return v1; }
+  } catch { /* storage unavailable or unreadable */ }
+  return {};
+}
 const saved = load();
 const state = {
   tab: 'code',
-  program: Array.isArray(saved.program) ? saved.program.map(b => newBlock(b.t, b)) : demoProgram(),
+  program: saved.program && saved.program.stacks ? saved.program : demoProgram(),
   ws: saved.ws || null,
   cfg: normalizeConfig(saved.cfg), sel: 'color',
   start: Object.assign({ x: 240, y: 240, h: 0 }, saved.start),
@@ -39,7 +38,7 @@ const state = {
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
-      program: state.program.map(({ id, ...b }) => b), ws: state.ws, cfg: state.cfg, start: state.start, pieces: state.pieces,
+      program: state.program, ws: state.ws, cfg: state.cfg, start: state.start, pieces: state.pieces,
       score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid
     }));
   } catch { /* storage unavailable: keep working without it */ }
@@ -139,10 +138,10 @@ function drawField() {
   $('match').classList.toggle('on', sim.matchOn);
   $('match-label').textContent = sim.matchOn ? 'End match' : 'Start 2:30 match';
   // Light up the block that is running.
-  const lit = sim.running ? programIds[sim.pc] || null : null;
-  if (ws && lit !== lastLit) {
-    const prev = lastLit && ws.getBlockById(lastLit); if (prev) prev.getSvgRoot().classList.remove('sim-running');
-    const cur = lit && ws.getBlockById(lit); if (cur) cur.getSvgRoot().classList.add('sim-running');
+  const lit = new Set(sim.activeIds());
+  if (ws && [...lit].join() !== [...lastLit].join()) {
+    for (const id of lastLit) { const b = !lit.has(id) && ws.getBlockById(id); if (b) b.getSvgRoot().classList.remove('sim-running'); }
+    for (const id of lit) { const b = ws.getBlockById(id); if (b) b.getSvgRoot().classList.add('sim-running'); }
     lastLit = lit;
   }
 }
@@ -170,7 +169,7 @@ $('side').addEventListener('click', (e) => {
 
 // ---------- code tab (drag-and-drop blocks) ----------
 
-let ws = null, programIds = [], lastLit = null, loadingWs = false;
+let ws = null, lastLit = new Set(), loadingWs = false;
 
 // Show a program in the block editor (after an import, the demo, or Clear).
 function showProgram(program) {
@@ -181,12 +180,19 @@ function showProgram(program) {
   syncProgram();
 }
 
+// Statements in the program (stacks and My Blocks), for the status line.
+function countBlocks(prog) {
+  const count = (list) => list.reduce((n, s) => n + 1 + count(s.body || []) + count(s.else || []), 0);
+  return prog.stacks.reduce((n, st) => n + count(st), 0) + Object.values(prog.procs).reduce((n, p) => n + count(p.body), 0);
+}
+
 // Read the program back out of the editor whenever the kids change it.
 function syncProgram() {
   const json = window.Blockly.serialization.workspaces.save(ws);
   const res = jsonToProgram(json);
-  state.program = res.program; programIds = res.ids; state.ws = json;
-  $('code-status').textContent = `${res.program.length} block${res.program.length === 1 ? '' : 's'}` + (res.warn.length ? ' · ' + res.warn[0] : '');
+  state.program = res.program; state.ws = json;
+  const n = countBlocks(res.program);
+  $('code-status').textContent = `${n} block${n === 1 ? '' : 's'}` + (res.warn.length ? ' · ' + res.warn[0] : '');
   save();
 }
 
@@ -213,7 +219,7 @@ function initCode() {
 $('tab-code').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-act]'); if (!btn) return;
   if (btn.dataset.act === 'demo') { showProgram(demoProgram()); setStart({ x: 240, y: 240, h: 0 }); }
-  else if (btn.dataset.act === 'clear') showProgram([]);
+  else if (btn.dataset.act === 'clear') showProgram(emptyProgram());
 });
 
 // ---------- score tab ----------
@@ -274,6 +280,7 @@ function renderRobot() {
     <div class="section-h">Drive base</div>
     <div class="form-grid">${NUM_FIELDS.map(([k, label]) => `<label>${label}<input type="number" step="any" data-cfgnum="${k}" value="${c[k]}"></label>`).join('')}
       <label>Drive motors (left, right)<select data-cfg="pair">${opt(PAIRS, c.pair)}</select></label>
+      <label>Force sensor port (front bumper)<select data-cfg="forcePort">${opt(['none'].concat(PORTS), c.forcePort)}</select></label>
     </div>
     <label class="check"><input type="checkbox" data-cfgbool="yawCW"${c.yawCW ? ' checked' : ''}>Yaw angle increases when turning clockwise</label>
     <label class="check"><input type="checkbox" data-cfgbool="collide"${c.collide ? ' checked' : ''}>Models and pieces are solid (off: drive through everything)</label>
@@ -483,8 +490,9 @@ $('file').addEventListener('change', async (e) => {
     if (res.cfg.pair) setup.push('drive motors ' + res.cfg.pair.split('').join(' + '));
     if (res.cfg.colorPort) setup.push('color sensor on ' + res.cfg.colorPort);
     if (res.cfg.distPort) setup.push('distance sensor on ' + res.cfg.distPort);
+    if (res.cfg.forcePort) setup.push('force sensor on ' + res.cfg.forcePort);
     sim.reset(); renderRobot(); drawField();
-    showMsg(`Imported “${file.name}”: ${res.program.length} blocks.` + (setup.length ? ' Robot set to: ' + setup.join(', ') + '.' : '') + (res.warn.length ? '\n' + res.warn.slice(0, 6).join('\n') : ''));
+    showMsg(`Imported “${file.name}”: ${countBlocks(res.program)} blocks.` + (setup.length ? ' Robot set to: ' + setup.join(', ') + '.' : '') + (res.warn.length ? '\n' + res.warn.slice(0, 6).join('\n') : ''));
   } catch (err) { showMsg(`Could not import “${file.name}”: ${err.message}`); }
 });
 
