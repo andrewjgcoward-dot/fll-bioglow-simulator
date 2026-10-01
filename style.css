@@ -50,7 +50,7 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 .msg { max-width: 1680px; margin: 0 auto 16px; padding: 10px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid #3C5A4C; font-size: 14px; white-space: pre-line; }
 .msg .btn { margin-top: 8px; }
 
-.app { display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 16px; max-width: 1680px; margin: 0 auto; }
+.app { display: grid; grid-template-columns: minmax(460px, 46%) minmax(0, 1fr); gap: 16px; max-width: 1680px; margin: 0 auto; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 120px); overflow: auto; }
 .field-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 @media (max-width: 1000px) {
@@ -64,24 +64,8 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--bg); }
 
 .section-h { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
-.pal-group { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.pal-group > div:first-child { font-size: 13px; font-weight: 700; color: var(--text-2); }
-.pal-items { display: flex; flex-wrap: wrap; gap: 6px; }
-.pal-items button { min-height: 36px; padding: 6px 12px; border: none; border-radius: 999px; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
 
-.prog-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px; }
 .ghost { min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; }
-.prog { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.hat { display: flex; align-items: center; gap: 8px; align-self: flex-start; padding: 10px 14px; border-radius: 16px 16px 10px 10px; background: #7D5C00; color: #fff; font-weight: 700; font-size: 14px; margin-left: 30px; }
-.blk-row { display: flex; align-items: center; gap: 4px; }
-.blk-num { width: 26px; flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: #86A196; text-align: right; }
-.blk { flex-grow: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 700; }
-.blk.active { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent), 0 0 18px rgba(143, 227, 176, .7); }
-.blk input, .blk select { min-height: 30px; padding: 2px 8px; border: none; border-radius: 999px; background: #fff; color: #111; font-size: 14px; }
-.blk input[type="number"] { width: 64px; }
-.blk input[type="text"] { width: 110px; }
-.icon-btn { width: 34px; height: 44px; flex-shrink: 0; border: none; border-radius: 8px; background: var(--panel-2); color: var(--text-2); cursor: pointer; display: grid; place-items: center; }
-.icon-btn.del { color: var(--bad); }
 .empty { margin-left: 30px; padding: 14px; border: 1px dashed #3C5A4C; border-radius: 10px; color: var(--muted); font-size: 14px; }
 
 .score-total { display: flex; align-items: baseline; justify-content: space-between; padding: 14px; border-radius: 12px; background: var(--bg); }
@@ -137,3 +121,10 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 #robot-editor .arm-l, #field .arm-l { font: 700 20px var(--mono); fill: #fff; pointer-events: none; }
 .props { padding: 12px; border-radius: 12px; background: var(--panel-2); display: flex; flex-direction: column; gap: 10px; }
 .props-h { font-weight: 700; }
+
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+#blockly { height: calc(100vh - 250px); min-height: 460px; border-radius: 12px; overflow: hidden; }
+@media (max-width: 1000px) { #blockly { height: 70vh; } }
+.blocklyToolboxDiv { padding-top: 6px; }
+.blocklyTreeLabel, .blocklyToolboxCategoryLabel { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; font-weight: 700; }
+.sim-running > .blocklyPath { stroke: #FFE600; stroke-width: 5px; filter: drop-shadow(0 0 6px rgba(255, 230, 0, .9)); }

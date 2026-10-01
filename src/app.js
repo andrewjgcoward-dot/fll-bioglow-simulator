@@ -1,5 +1,7 @@
 import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore } from './field.js';
-import { PORTS, PAIRS, CATEGORIES, BLOCK_CAT, OPENERS, PALETTE, blockParts, newBlock } from './blocks.js';
+import { PORTS, PAIRS, newBlock } from './blocks.js';
+import { programToJson, jsonToProgram } from './blocks-json.js';
+import { createWorkspace, registerPorts } from './workspace.js';
 import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside } from './sim.js';
 import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
@@ -27,6 +29,7 @@ const saved = load();
 const state = {
   tab: 'code',
   program: Array.isArray(saved.program) ? saved.program.map(b => newBlock(b.t, b)) : demoProgram(),
+  ws: saved.ws || null,
   cfg: normalizeConfig(saved.cfg), sel: 'color',
   start: Object.assign({ x: 240, y: 240, h: 0 }, saved.start),
   pieces: Array.isArray(saved.pieces) ? saved.pieces : structuredClone(LOOSE_DEFAULTS),
@@ -36,7 +39,7 @@ const state = {
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
-      program: state.program.map(({ id, ...b }) => b), cfg: state.cfg, start: state.start, pieces: state.pieces,
+      program: state.program.map(({ id, ...b }) => b), ws: state.ws, cfg: state.cfg, start: state.start, pieces: state.pieces,
       score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid
     }));
   } catch { /* storage unavailable: keep working without it */ }
@@ -135,9 +138,13 @@ function drawField() {
   $('clock').classList.toggle('low', sim.matchOn && left <= 15);
   $('match').classList.toggle('on', sim.matchOn);
   $('match-label').textContent = sim.matchOn ? 'End match' : 'Start 2:30 match';
-  const active = sim.running ? sim.pc : -1;
-  document.querySelectorAll('.blk.active').forEach(e => { if (+e.dataset.idx !== active) e.classList.remove('active'); });
-  if (active >= 0) { const e = document.querySelector(`.blk[data-idx="${active}"]`); if (e) e.classList.add('active'); }
+  // Light up the block that is running.
+  const lit = sim.running ? programIds[sim.pc] || null : null;
+  if (ws && lit !== lastLit) {
+    const prev = lastLit && ws.getBlockById(lastLit); if (prev) prev.getSvgRoot().classList.remove('sim-running');
+    const cur = lit && ws.getBlockById(lit); if (cur) cur.getSvgRoot().classList.add('sim-running');
+    lastLit = lit;
+  }
 }
 
 function renderLog() { $('log').innerHTML = sim.logLines.map(l => `<div>${esc(l)}</div>`).join(''); }
@@ -161,65 +168,52 @@ $('side').addEventListener('click', (e) => {
   if ((b.dataset.side === 'left') !== left) setStart({ x: FW - state.start.x, h: normDeg(-state.start.h) });
 });
 
-// ---------- code tab ----------
+// ---------- code tab (drag-and-drop blocks) ----------
 
-function renderCode() {
-  const pal = PALETTE.map(g => `<div class="pal-group"><div>${CATEGORIES[g.cat].name}</div><div class="pal-items">${
-    g.items.map(([t, label]) => `<button type="button" data-add="${t}" style="background:${CATEGORIES[g.cat].bg}">${esc(label)}</button>`).join('')
-  }</div></div>`).join('');
-  const stack = [];
-  const rows = state.program.map((b, i) => {
-    let endLabel = null;
-    if (b.t === 'end') { const o = stack.pop(); endLabel = o === undefined ? 'end (nothing to close)' : o === 'repeat' ? 'end repeat' : 'end if'; }
-    const depth = stack.length; if (OPENERS[b.t]) stack.push(b.t);
-    const parts = blockParts(b).map(p => {
-      if (p.text !== undefined) return `<span>${esc(b.t === 'end' ? endLabel : p.text)}</span>`;
-      if (p.num) return `<input type="number" step="any" data-k="${p.num}" value="${esc(b[p.num])}" aria-label="${p.aria}">`;
-      if (p.str) return `<input type="text" data-k="${p.str}" value="${esc(b[p.str])}" aria-label="${p.aria}">`;
-      const opts = p.opts.indexOf(b[p.sel]) >= 0 ? p.opts : p.opts.concat([b[p.sel]]);
-      return `<select data-k="${p.sel}" aria-label="${p.aria}">${opts.map(o => `<option${o === b[p.sel] ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
-    }).join('');
-    const bg = CATEGORIES[BLOCK_CAT[b.t] || 'note'].bg;
-    return `<div class="blk-row" data-i="${i}">
-      <span class="blk-num">${i + 1}</span>
-      <div class="blk" data-idx="${i}" style="background:${bg};margin-left:${depth * 20}px">${parts}</div>
-      <button type="button" class="icon-btn" data-act="up" aria-label="Move block ${i + 1} up"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
-      <button type="button" class="icon-btn" data-act="down" aria-label="Move block ${i + 1} down"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
-      <button type="button" class="icon-btn del" data-act="del" aria-label="Delete block ${i + 1}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-    </div>`;
-  }).join('');
+let ws = null, programIds = [], lastLit = null, loadingWs = false;
+
+// Show a program in the block editor (after an import, the demo, or Clear).
+function showProgram(program) {
+  if (!ws) { state.program = program; save(); return; }
+  registerPorts(program);
+  loadingWs = true;
+  try { window.Blockly.serialization.workspaces.load(programToJson(program), ws); } finally { loadingWs = false; }
+  syncProgram();
+}
+
+// Read the program back out of the editor whenever the kids change it.
+function syncProgram() {
+  const json = window.Blockly.serialization.workspaces.save(ws);
+  const res = jsonToProgram(json);
+  state.program = res.program; programIds = res.ids; state.ws = json;
+  $('code-status').textContent = `${res.program.length} block${res.program.length === 1 ? '' : 's'}` + (res.warn.length ? ' · ' + res.warn[0] : '');
+  save();
+}
+
+function initCode() {
   $('tab-code').innerHTML = `
-    <div class="section-h">Blocks · tap to add</div>${pal}
-    <div class="prog-head"><div class="section-h">Program · ${state.program.length} blocks</div>
-      <div class="row"><button type="button" class="ghost" data-act="demo">Demo</button><button type="button" class="ghost" data-act="clear">Clear</button></div></div>
-    <div class="prog">
-      <div class="hat"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>when program starts</div>
-      ${rows || '<div class="empty">Tap a block above to add it here, or import a SPIKE file.</div>'}
-    </div>`;
+    <div class="code-head">
+      <span class="muted" id="code-status"></span>
+      <div class="row"><button type="button" class="ghost" data-act="demo">Demo</button><button type="button" class="ghost" data-act="clear">Clear</button></div>
+    </div>
+    <div id="blockly"></div>
+    <div class="fine">Drag blocks out of the menu and snap them under “when program starts”. Drag a block back to the menu to delete it.</div>`;
+  try { ws = createWorkspace($('blockly')); }
+  catch (err) { $('blockly').innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
+  let loaded = false;
+  if (state.ws) {
+    try { registerPorts(state.program); loadingWs = true; window.Blockly.serialization.workspaces.load(state.ws, ws); loaded = true; }
+    catch { /* saved layout from an older version: rebuild from the program */ }
+    finally { loadingWs = false; }
+  }
+  if (loaded) syncProgram(); else showProgram(state.program);
+  ws.addChangeListener((e) => { if (!e.isUiEvent && !loadingWs) syncProgram(); });
 }
 
 $('tab-code').addEventListener('click', (e) => {
-  const add = e.target.closest('[data-add]');
-  if (add) {
-    const t = add.dataset.add;
-    state.program.push(newBlock(t, t === 'waitColor' || t === 'ifColor' ? { port: state.cfg.colorPort } : t === 'waitDist' || t === 'ifDist' ? { port: state.cfg.distPort } : t === 'pair' ? { pair: state.cfg.pair } : {}));
-    save(); renderCode(); return;
-  }
   const btn = e.target.closest('[data-act]'); if (!btn) return;
-  const act = btn.dataset.act;
-  if (act === 'demo') { state.program = demoProgram(); setStart({ x: 240, y: 240, h: 0 }); }
-  else if (act === 'clear') state.program = [];
-  else {
-    const i = +btn.closest('.blk-row').dataset.i; const p = state.program;
-    if (act === 'del') p.splice(i, 1);
-    else { const j = act === 'up' ? i - 1 : i + 1; if (j < 0 || j >= p.length) return; [p[i], p[j]] = [p[j], p[i]]; }
-  }
-  save(); renderCode();
-});
-$('tab-code').addEventListener('change', (e) => {
-  const k = e.target.dataset.k; if (!k) return;
-  const i = +e.target.closest('.blk-row').dataset.i;
-  state.program[i][k] = e.target.value; save();
+  if (btn.dataset.act === 'demo') { showProgram(demoProgram()); setStart({ x: 240, y: 240, h: 0 }); }
+  else if (btn.dataset.act === 'clear') showProgram([]);
 });
 
 // ---------- score tab ----------
@@ -409,9 +403,12 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   state.tab = b.dataset.tab;
   document.querySelectorAll('.tabs [data-tab]').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === state.tab)));
   for (const t of ['code', 'score', 'robot']) $('tab-' + t).hidden = t !== state.tab;
+  if (state.tab === 'code' && ws) window.Blockly.svgResize(ws);
 });
 
-$('run').onclick = () => { sim.run(state.program); drawField(); };
+// Read the blocks right before running/exporting, so the newest edits always count.
+const latestProgram = () => { if (ws) syncProgram(); return state.program; };
+$('run').onclick = () => { sim.run(latestProgram()); drawField(); };
 $('stop').onclick = () => { if (sim.stop()) { state.tokens = Math.max(0, state.tokens - 1); save(); renderScore(); } drawField(); };
 $('reset').onclick = () => { sim.reset(); sim.log('Robot back at the start position.'); drawField(); };
 $('match').onclick = () => {
@@ -481,19 +478,19 @@ $('file').addEventListener('change', async (e) => {
   try {
     const res = await importProject(await file.arrayBuffer());
     Object.assign(state.cfg, res.cfg);
-    state.program = res.program; save();
+    showProgram(res.program);
     const setup = [];
     if (res.cfg.pair) setup.push('drive motors ' + res.cfg.pair.split('').join(' + '));
     if (res.cfg.colorPort) setup.push('color sensor on ' + res.cfg.colorPort);
     if (res.cfg.distPort) setup.push('distance sensor on ' + res.cfg.distPort);
-    sim.reset(); renderCode(); renderRobot(); drawField();
+    sim.reset(); renderRobot(); drawField();
     showMsg(`Imported “${file.name}”: ${res.program.length} blocks.` + (setup.length ? ' Robot set to: ' + setup.join(', ') + '.' : '') + (res.warn.length ? '\n' + res.warn.slice(0, 6).join('\n') : ''));
   } catch (err) { showMsg(`Could not import “${file.name}”: ${err.message}`); }
 });
 
 let lastUrl = null;
 $('export').onclick = () => {
-  const { zip, dropped } = exportLlsp3(state.program, 'BioGlow sim export');
+  const { zip, dropped } = exportLlsp3(latestProgram(), 'BioGlow sim export');
   if (lastUrl) URL.revokeObjectURL(lastUrl);
   lastUrl = URL.createObjectURL(new Blob([zip], { type: 'application/octet-stream' }));
   const a = document.createElement('a'); a.href = lastUrl; a.download = 'bioglow-sim.llsp3'; a.className = 'btn save'; a.textContent = 'Save bioglow-sim.llsp3';
@@ -519,5 +516,8 @@ let lastDraw = 0;
 function draw() { dirty = false; lastDraw = performance.now(); drawField(); }
 function frame() { if (dirty) draw(); requestAnimationFrame(frame); }
 
-buildField(); renderStart(); renderCode(); renderScore(); renderRobot(); renderLog(); drawField();
+buildField(); renderStart(); initCode(); renderScore(); renderRobot(); renderLog(); drawField();
 requestAnimationFrame(frame);
+// Save the latest blocks when the page is hidden or closed.
+document.addEventListener('visibilitychange', () => { if (document.hidden && ws) syncProgram(); });
+window.addEventListener('pagehide', () => { if (ws) syncProgram(); });

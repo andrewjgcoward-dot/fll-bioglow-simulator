@@ -231,3 +231,29 @@ test('imports and round-trips local SPIKE files', { skip: !fixtures && 'set SPIK
   }
   console.log(`  checked ${files.length} file(s)`);
 });
+
+import { programToJson, jsonToProgram } from '../src/blocks-json.js';
+
+test('programs survive the trip through the block editor format', () => {
+  const all = [];
+  for (const g of PALETTE) for (const [t] of g.items) { if (t === 'end') continue; all.push(newBlock(t)); if (t.startsWith('if') || t === 'repeat') all.push(newBlock('end')); }
+  all.push(newBlock('note', { op: 'flipperlight_lightDisplayImageOn' }));
+  const nested = prog([['repeat', { val: '2' }], ['ifColor', { port: 'C', color: 'black' }], ['stopMove', {}], ['end', {}], ['wait', { val: '0.5' }], ['end', {}], ['show', { text: 'ok' }]]);
+  for (const p of [all, nested]) {
+    const back = jsonToProgram(programToJson(p));
+    assert.deepEqual(back.program.map(({ id, ...r }) => r), p.map(({ id, ...r }) => r));
+    assert.equal(back.ids.length, back.program.length);
+  }
+});
+
+test('the block editor ignores loose blocks and treats an empty "if" as false', () => {
+  const json = { blocks: { languageVersion: 0, blocks: [
+    { type: 'sim_start', id: 'h', x: 0, y: 0, next: { block: { type: 'sim_if', id: 'i', inputs: { DO: { block: { type: 'sim_stopMove', id: 's' } } }, next: { block: { type: 'sim_wait', id: 'w', fields: { val: 2 } } } } } },
+    { type: 'sim_move', id: 'loose', x: 300, y: 300, fields: { dir: 'back', val: 5, unit: 'cm' } }
+  ] } };
+  const { program, ids, warn } = jsonToProgram(json);
+  assert.deepEqual(program.map(b => b.t), ['wait']);
+  assert.equal(program[0].val, '2');
+  assert.deepEqual(ids, ['w']);
+  assert.ok(warn.some(w => w.includes('no condition')));
+});

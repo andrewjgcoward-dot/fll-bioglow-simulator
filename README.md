@@ -11,7 +11,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **Left / Right:** one tap moves the start position to the matching spot in the other home.
 - **Robot:** a two-wheel drive base you can configure, with a color sensor, a distance sensor, a gyro (yaw angle) and attachment motors.
 - **Robot editor:** drag the color sensor, distance sensor and arms onto a top view of the robot. Each arm is a **lift/press** arm (tilts up and down) or a **sweep** arm (swings flat), points front, back, left or right, and has a length and gear ratio. Lowered and sweeping arms push loose pieces; arms stop when they press on a model or the mat, like SPIKE stall detection.
-- **Blocks:** move, steer, start/stop moving, movement speed, movement motors, motor run / go to position / speed / stop, wait, wait until (color, distance, yaw), if, repeat, reset yaw, write and beep.
+- **Blocks:** a drag-and-drop editor that looks and works like the SPIKE App: blocks snap together under "when program starts", the category menu uses SPIKE's colors, `if` and `repeat` are C-shaped, and sensor conditions are hexagon blocks that drop into `if` and `wait until`. The running block is outlined in yellow. Blocks cover moving, steering, start/stop moving, movement speed and motors, motor run / go to position / speed / stop, wait, wait until, if, repeat, reset yaw, write and beep.
 - **SPIKE files:**
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
   - **Export:** writes `.llsp3` files that follow the SPIKE App's file layout.
@@ -51,12 +51,19 @@ To also check your own SPIKE projects, point the tests at a folder of `.llsp3` f
 SPIKE_FIXTURES=path/to/your/projects npm test
 ```
 
+## Libraries
+
+The block editor is [Blockly](https://github.com/google/blockly) 11.2.2 (Apache 2.0), loaded from jsDelivr with its Scratch-style "zelos" look. Everything else is plain JavaScript with no dependencies.
+
 ## Code layout
 
 | File | What it holds |
 | --- | --- |
 | `src/field.js` | Mat size, mission model positions, scoring rules |
-| `src/blocks.js` | Block types, defaults and layout |
+| `src/blocks.js` | Block types and defaults |
+| `src/workspace.js` | The Blockly block shapes, menu and editor setup |
+| `src/blocks-json.js` | Converting between editor blocks and the simulator's program |
+| `src/robot-view.js` | Drawing the robot on the field and in the robot editor |
 | `src/sim.js` | Drive physics, sensors, collisions and the block runner |
 | `src/spike-io.js` | `.llsp3` / `.sb3` zip reading and writing, block conversion |
 | `src/app.js` | The page UI |
