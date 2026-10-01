@@ -8,7 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232D5A3B'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%238FE3B0'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2026-10-01c">
+<link rel="stylesheet" href="style.css?v=2026-10-01d">
 </head>
 <body>
 <header class="top">
@@ -22,6 +22,10 @@
       Import SPIKE file
       <input id="file" type="file" accept=".llsp3,.llsp,.sb3,.json" class="file-input">
     </label>
+    <button id="gh-open" class="btn" type="button">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Open from GitHub
+    </button>
     <button id="export" class="btn" type="button">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
       Export .llsp3
@@ -30,6 +34,30 @@
 </header>
 
 <div id="msg" class="msg" role="status" hidden></div>
+
+<dialog id="gh" class="gh" aria-labelledby="gh-title">
+  <div class="gh-head">
+    <h2 id="gh-title">Open from GitHub</h2>
+    <button id="gh-close" class="btn small" type="button" aria-label="Close">✕</button>
+  </div>
+  <form id="gh-setup" class="gh-setup">
+    <label>Repository <input id="gh-repo" placeholder="owner/repo or github.com link" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+    <label>Access token <span class="fine">(only for a private repo)</span>
+      <input id="gh-token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label>
+    <div class="fine">Make a <b>fine-grained token</b> on GitHub (Settings → Developer settings → Fine-grained tokens) with access to <b>only this repository</b>, <b>Contents: Read-only</b>, and an expiry date. It is remembered in this browser only and sent only to GitHub.</div>
+    <div class="row"><button class="btn primary" type="submit">Show projects</button></div>
+  </form>
+  <div id="gh-browse" hidden>
+    <div class="row gh-bar">
+      <span id="gh-where" class="mono grow"></span>
+      <button id="gh-change" class="btn small" type="button">Change</button>
+      <button id="gh-forget" class="btn small red" type="button">Forget token</button>
+    </div>
+    <input id="gh-filter" type="search" placeholder="Filter projects" aria-label="Filter projects">
+    <div id="gh-list" class="gh-list"></div>
+  </div>
+  <div id="gh-status" class="fine" role="status"></div>
+</dialog>
 
 <main class="app">
   <section class="panel">
@@ -112,8 +140,8 @@
   // Every module gets the release version in its URL, so a browser never mixes old and new files
   // after an update. Bump VERSION (and the stylesheet's ?v=) with each release.
   (function () {
-    var VERSION = '2026-10-01c';
-    var files = ['app', 'sim', 'blocks', 'blocks-json', 'workspace', 'spike-io', 'robot-view', 'field'];
+    var VERSION = '2026-10-01d';
+    var files = ['app', 'sim', 'blocks', 'blocks-json', 'workspace', 'spike-io', 'robot-view', 'field', 'github'];
     var map = { imports: {} };
     files.forEach(function (f) { map.imports['./src/' + f + '.js'] = './src/' + f + '.js?v=' + VERSION; });
     var im = document.createElement('script'); im.type = 'importmap'; im.textContent = JSON.stringify(map);

@@ -29,6 +29,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **SPIKE files:**
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
   - **Export:** writes `.llsp3` files that follow the SPIKE App's file layout.
+  - **Open from GitHub:** lists the `.llsp3` files in a GitHub repository, grouped by folder, and opens one with a tap. A private repo needs a fine-grained personal access token with access to only that repository, Contents: Read-only, and an expiry date. The repo name and token are remembered in that browser only and sent only to `api.github.com`; **Forget token** removes them.
 - **Match mode:** a 2:30 clock. Stopping the robot outside home costs a precision token.
 - **Score sheet:** all 15 missions, equipment inspection and precision tokens, using the rulebook's point values.
 - **Saved progress:** your program, robot settings and score are saved in the browser.
@@ -85,6 +86,7 @@ The block editor is [Blockly](https://github.com/google/blockly) 11.2.2 (Apache 
 | `src/robot-view.js` | Drawing the robot on the field and in the robot editor |
 | `src/sim.js` | Drive physics, sensors, collisions and the program runner |
 | `src/spike-io.js` | `.llsp3` / `.sb3` zip reading and writing, block conversion |
+| `src/github.js` | Listing and downloading SPIKE projects from a GitHub repository |
 | `src/app.js` | The page UI |
 
 ## Sources and accuracy

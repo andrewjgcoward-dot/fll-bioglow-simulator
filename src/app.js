@@ -5,6 +5,7 @@ import { createWorkspace, registerNames } from './workspace.js';
 import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside, calibrateWheel, calibrateTrack, calibrateTop } from './sim.js';
 import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
+import { parseRepo, listProjects, fetchProject } from './github.js';
 
 const SWATCH = { black: '#111111', violet: '#7A4FD6', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
 const demoProgram = () => DEMO();
@@ -649,8 +650,14 @@ function showMsg(text, link) {
 
 $('file').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
+  try { await openProject(await file.arrayBuffer(), file.name); }
+  catch (err) { showMsg(`Could not import “${file.name}”: ${err.message}`); }
+});
+
+// Load a SPIKE project file into the editor and set up the robot's ports from it.
+async function openProject(buf, name) {
   try {
-    const res = await importProject(await file.arrayBuffer());
+    const res = await importProject(buf);
     Object.assign(state.cfg, res.cfg);
     state.sounds = res.program.sounds || {};
     showProgram(res.program);
@@ -660,9 +667,88 @@ $('file').addEventListener('change', async (e) => {
     if (res.cfg.distPort) setup.push('distance sensor on ' + res.cfg.distPort);
     if (res.cfg.forcePort) setup.push('force sensor on ' + res.cfg.forcePort);
     sim.reset(); renderRobot(); drawField();
-    showMsg(`Imported “${file.name}”: ${countBlocks(res.program)} blocks.` + (setup.length ? ' Robot set to: ' + setup.join(', ') + '.' : '') + (res.warn.length ? '\n' + res.warn.slice(0, 6).join('\n') : ''));
-  } catch (err) { showMsg(`Could not import “${file.name}”: ${err.message}`); }
-});
+    showMsg(`Imported “${name}”: ${countBlocks(res.program)} blocks.` + (setup.length ? ' Robot set to: ' + setup.join(', ') + '.' : '') + (res.warn.length ? '\n' + res.warn.slice(0, 6).join('\n') : ''));
+    return true;
+  } catch (err) { showMsg(`Could not import “${name}”: ${err.message}`); return false; }
+}
+
+// ---------- open from GitHub ----------
+// The repo name and token are kept in this browser only (never in saved programs or exports).
+
+const GH_STORE = 'bioglow-sim-github';
+const gh = (() => { try { return JSON.parse(localStorage.getItem(GH_STORE)) || {}; } catch { return {}; } })();
+let ghFiles = null;
+const ghSave = () => { try { localStorage.setItem(GH_STORE, JSON.stringify({ repo: gh.repo || '', token: gh.token || '' })); } catch { /* not remembered */ } };
+const ghStatus = (text, bad) => { const s = $('gh-status'); s.textContent = text; s.classList.toggle('bad', !!bad); };
+
+function ghShowSetup() {
+  $('gh-setup').hidden = false; $('gh-browse').hidden = true;
+  $('gh-repo').value = gh.repo || ''; $('gh-token').value = gh.token || '';
+}
+
+async function ghBrowse() {
+  const where = parseRepo(gh.repo);
+  if (!where) { ghShowSetup(); return; }
+  $('gh-setup').hidden = true; $('gh-browse').hidden = false;
+  $('gh-where').textContent = `${where.owner}/${where.repo}` + (gh.token ? ' · token' : '');
+  $('gh-forget').hidden = !gh.token;
+  $('gh-list').textContent = ''; ghStatus('Loading the project list…');
+  try {
+    const { files, truncated, branch } = await listProjects(where, gh.token, fetch);
+    ghFiles = files;
+    $('gh-where').textContent = `${where.owner}/${where.repo} @ ${branch}` + (gh.token ? ' · token' : '');
+    ghRenderList();
+    ghStatus(files.length ? `${files.length} SPIKE project${files.length > 1 ? 's' : ''}. Tap one to open it.` + (truncated ? ' (The repo is very large; some files may be missing.)' : '')
+      : 'No .llsp3 files in this repository.');
+  } catch (err) { ghStatus(err.message, true); }
+}
+
+function ghRenderList() {
+  const list = $('gh-list'); list.textContent = '';
+  const q = $('gh-filter').value.trim().toLowerCase();
+  let folder = null;
+  for (const f of ghFiles || []) {
+    if (q && !f.path.toLowerCase().includes(q)) continue;
+    if (f.folder !== folder) {
+      folder = f.folder;
+      const h = document.createElement('div'); h.className = 'gh-folder'; h.textContent = (folder || '(top folder)') + '/';
+      list.appendChild(h);
+    }
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'gh-file';
+    const n = document.createElement('span'); n.textContent = f.name;
+    const sz = document.createElement('span'); sz.className = 'fine'; sz.textContent = Math.max(1, Math.round(f.size / 1024)) + ' KB';
+    b.append(n, sz);
+    b.onclick = async () => {
+      ghStatus(`Opening ${f.name}…`);
+      try {
+        const buf = await fetchProject(parseRepo(gh.repo), f, gh.token, fetch);
+        if (await openProject(buf, f.name)) { $('gh').close(); ghStatus(''); }
+        else ghStatus($('msg').textContent, true);
+      } catch (err) { ghStatus(err.message, true); }
+    };
+    list.appendChild(b);
+  }
+}
+
+$('gh-open').onclick = () => {
+  ghStatus('');
+  $('gh').showModal();
+  if (!gh.repo) ghShowSetup();
+  else if (ghFiles) { $('gh-setup').hidden = true; $('gh-browse').hidden = false; ghRenderList(); }
+  else ghBrowse();
+};
+$('gh-close').onclick = () => $('gh').close();
+$('gh').addEventListener('click', (e) => { if (e.target === $('gh')) $('gh').close(); }); // tap outside closes
+$('gh-setup').onsubmit = (e) => {
+  e.preventDefault();
+  const where = parseRepo($('gh-repo').value);
+  if (!where) { ghStatus('Enter the repository as owner/repo, or paste its github.com link.', true); return; }
+  gh.repo = `${where.owner}/${where.repo}`; gh.token = $('gh-token').value.trim();
+  ghSave(); ghFiles = null; ghBrowse();
+};
+$('gh-change').onclick = () => { ghShowSetup(); ghStatus(''); };
+$('gh-forget').onclick = () => { gh.token = ''; ghSave(); ghFiles = null; ghShowSetup(); ghStatus('Token removed from this browser.'); };
+$('gh-filter').oninput = () => ghRenderList();
 
 let lastUrl = null;
 $('export').onclick = () => {

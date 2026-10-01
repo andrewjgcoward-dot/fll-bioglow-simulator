@@ -50,6 +50,27 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 .msg { max-width: 1680px; margin: 0 auto 16px; padding: 10px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid #3C5A4C; font-size: 14px; white-space: pre-line; }
 .msg .btn { margin-top: 8px; }
 
+.gh { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px; border-radius: 14px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line-2); }
+.gh::backdrop { background: rgba(0, 0, 0, .6); }
+.gh-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.gh h2 { margin: 0; font-size: 20px; }
+.gh-setup { display: grid; gap: 12px; }
+.gh label { display: grid; gap: 4px; font-weight: 700; font-size: 14px; }
+.gh input { width: 100%; min-height: 44px; padding: 0 12px; border-radius: 10px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--line-2); }
+.gh-bar { margin-bottom: 8px; }
+#gh-where { overflow-wrap: anywhere; font-size: 13px; }
+.gh-list { margin-top: 8px; max-height: 55vh; overflow: auto; }
+.gh-folder { margin: 12px 0 4px; font-size: 12px; color: var(--muted); font-family: var(--mono); overflow-wrap: anywhere; }
+.gh-file { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 12px; margin: 2px 0; border-radius: 10px; text-align: left; cursor: pointer;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+.gh-file:hover { border-color: var(--accent); }
+.gh-file .fine { flex-shrink: 0; }
+#gh-status { margin-top: 8px; white-space: pre-line; }
+#gh-status.bad { color: var(--bad); }
+
 .app { display: grid; grid-template-columns: minmax(460px, 46%) minmax(0, 1fr); gap: 16px; max-width: 1680px; margin: 0 auto; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 120px); overflow: auto; }
 .field-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
