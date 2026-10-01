@@ -6,6 +6,7 @@ import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside, calibrateWheel, calibrate
 import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 import { parseRepo, listProjects, fetchProject } from './github.js';
+import { shareUrl, decodeShare, codeFromHash, LONG_LINK } from './share.js';
 
 const SWATCH = { black: '#111111', violet: '#7A4FD6', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
 const demoProgram = () => DEMO();
@@ -760,6 +761,71 @@ $('export').onclick = () => {
   a.click();
 };
 
+// ---------- share ----------
+// Share link: the program, robot and start position travel inside the link (nothing is uploaded).
+// Share file: the .llsp3 through the device's share sheet, where the browser allows that file type.
+
+const SHARE_NAME = 'bioglow-sim.llsp3';
+const isCancel = (err) => err && err.name === 'AbortError';
+
+$('share').onclick = async () => {
+  const program = latestProgram();
+  let url;
+  try { url = await shareUrl(location.href, { program, cfg: state.cfg, start: state.start }); }
+  catch (err) { showMsg('Could not make a share link: ' + err.message); return; }
+  const { zip } = exportLlsp3(program, 'BioGlow sim export');
+  const file = new File([zip], SHARE_NAME, { type: 'application/octet-stream' });
+  // Work this out now: the share sheet has to open straight from the tap.
+  const canFile = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+
+  const box = document.createElement('div');
+  const row = document.createElement('div'); row.className = 'share-row'; box.appendChild(row);
+  const btn = (text, primary, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (primary ? ' save' : ''); b.textContent = text; b.onclick = fn; row.appendChild(b); return b; };
+  const shown = document.createElement('a'); shown.className = 'share-link'; shown.href = url; shown.textContent = url;
+
+  btn(navigator.share ? 'Share link' : 'Copy link', true, async () => {
+    try {
+      if (navigator.share) await navigator.share({ title: 'BioGlow simulator program', text: 'Open this to load my program in the BioGlow simulator:', url });
+      else { await navigator.clipboard.writeText(url); showMsg('Link copied. Paste it into an email or message.'); }
+    } catch (err) {
+      if (isCancel(err)) return;
+      try { await navigator.clipboard.writeText(url); showMsg('Sharing didn’t work here, so the link was copied instead. Paste it into an email or message.'); }
+      catch { showMsg('Copy this link and paste it into an email or message:', shown); }
+    }
+  });
+  btn(canFile ? 'Share .llsp3 file' : 'Save .llsp3 file', false, async () => {
+    if (canFile) {
+      try { await navigator.share({ files: [file], title: SHARE_NAME }); return; }
+      catch (err) { if (isCancel(err)) return; }
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = SHARE_NAME; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    showMsg(`Saved ${SHARE_NAME} to Downloads.` + (canFile ? '' : ' This browser can’t attach SPIKE files to a share, so attach it from Downloads, or use Share link.'));
+  });
+  box.appendChild(shown);
+  showMsg('Share link: opens this program, robot setup and start position in the simulator on any device. Nothing is uploaded; the program is inside the link.'
+    + (url.length > LONG_LINK ? ` This link is long (${url.length} characters), so some apps may cut it off; the file is safer.` : '')
+    + (canFile ? '' : '\nThis browser can only save the SPIKE file, not attach it to a share.') + '\n', box);
+};
+
+// Open a program from a share link (on load, or when a link is pasted into this tab).
+async function openShared() {
+  const code = codeFromHash(location.hash);
+  if (!code) return;
+  history.replaceState(null, '', location.pathname + location.search); // a reload shouldn't reopen it
+  let data;
+  try { data = await decodeShare(code); } catch (err) { showMsg(err.message); return; }
+  if (countBlocks(latestProgram()) > 0 && !confirm('Open the shared program? It replaces the program, robot setup and start position here.')) return;
+  sim.stop();
+  if (data.cfg) Object.assign(state.cfg, normalizeConfig(data.cfg));
+  state.sounds = data.program.sounds || {};
+  showProgram(data.program);
+  if (data.start) setStart(data.start);
+  sim.reset(); renderRobot(); drawField();
+  showMsg(`Opened a shared program: ${countBlocks(data.program)} blocks.`);
+}
+window.addEventListener('hashchange', openShared);
+
 // ---------- loop ----------
 
 // Physics runs on a timer (not animation frames) so slow or throttled drawing doesn't slow the robot.
@@ -779,6 +845,7 @@ function draw() { dirty = false; lastDraw = performance.now(); drawField(); }
 function frame() { if (dirty) draw(); requestAnimationFrame(frame); }
 
 buildField(); renderStart(); initCode(); renderScore(); renderRobot(); renderLog(); drawField();
+openShared();
 requestAnimationFrame(frame);
 // Save the latest blocks when the page is hidden or closed.
 document.addEventListener('visibilitychange', () => { if (document.hidden && ws) syncProgram(); });
