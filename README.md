@@ -10,7 +10,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **Loose pieces:** purple pieces slide and turn when the robot pushes them, and stop against walls and models. Drag them anywhere, add more, or reset them. A keystone species piece starts in left home. Mission models stay fixed, like the real Dual Lock; a "just for fun" setting lets the robot shove them too.
 - **Left / Right:** one tap moves the start position to the matching spot in the other home.
 - **Robot:** a two-wheel drive base you can configure, with a color sensor, a distance sensor, a gyro (yaw angle) and attachment motors.
-- **Robot editor:** drag the color sensor, distance sensor and arms onto a top view of the robot. Each arm is a **lift/press** arm (tilts up and down) or a **sweep** arm (swings flat), points front, back, left or right, and has a length and gear ratio. Lowered and sweeping arms push loose pieces; arms stop when they press on a model or the mat, like SPIKE stall detection.
+- **Robot editor:** drag the wheels, color sensor, distance sensor and arms on a top view of the robot laid out in LEGO studs (8 mm). Dragging a wheel sideways sets the wheel spacing; dragging it forward or back moves the axle. Pick a standard wheel size (56 mm SPIKE Prime, 88 mm, 62.4 mm, 43.2 mm) or enter your own. Each arm is a **lift/press** arm (tilts up and down) or a **sweep** arm (swings flat), points front, back, left or right, and has a length and gear ratio. Lowered and sweeping arms push loose pieces; arms stop when they press on a model or the mat, like SPIKE stall detection.
 - **Blocks:** a drag-and-drop editor that looks and works like the SPIKE App, with the same ten categories:
   - **Motors:** run for, go to position, start, stop, set speed, set relative position, position and relative position.
   - **Movement:** move, steer, tank (left/right %), start/stop moving, movement speed, movement motors, and "1 motor rotation = … cm".
@@ -24,6 +24,8 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
   - **My Blocks:** "Make a Block", with number and true/false inputs.
 
   The running blocks are outlined in yellow.
+- **Calibration:** three short test programs to run on the real robot (drive 5 rotations, spin 2 rotations, drive 2 seconds). Enter what you measured and the simulator uses your robot's real wheel size, wheel spacing and top speed. An optional speed-up time makes the robot accelerate instead of jumping to full speed.
+- **Mission models that react (simplified):** pushing or pressing the right model completes it. Examples: the M01 pilot launches the drone, M02 drops seeds you can collect, M03's flag goes down, a lift arm pressing M12 raises the cane, and touching an M10 habitat loses those points. The keystone species counts for M13 when it's pushed into the M13 dock, and seeds count for M14 in the M14 dock. Choose which dock (mine, farm, city) holds M13, M14 and M15. The score sheet can fill these in automatically.
 - **SPIKE files:**
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
   - **Export:** writes `.llsp3` files that follow the SPIKE App's file layout.
@@ -33,7 +35,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 
 ### Not yet
 
-- Mission mechanisms (levers, lifts, flips) don't react yet: an arm can press on a model, but the model doesn't change. Arms can push pieces but not pick them up.
+- Mission mechanisms are simplified: any push or press on the right model completes it. Real models need the right direction, force or attachment, and some items (M04's second leaf, M06, M09's camera and seed, M15's skylight, the bonuses) are still scored by hand. Arms can push pieces but not pick them up.
 - Arms are limited to straight front/back/left/right directions, with no odd angles, linkages or multi-joint arms.
 - Not simulated yet: SPIKE Python projects; tilt, shake and orientation start blocks (the simulated robot never tilts); the real sound recordings (a stand-in plays instead).
 - Sensor values are simplified. The color sensor reports SPIKE color numbers and rough reflected-light values for the mat. The distance reporter gives 200 when nothing is in range; check that against your real sensor. Pitch and roll are always 0. The force sensor counts as pressed when the front of the robot is pushing on something.
@@ -63,6 +65,10 @@ To also check your own SPIKE projects, point the tests at a folder of `.llsp3` f
 ```bash
 SPIKE_FIXTURES=path/to/your/projects npm test
 ```
+
+## Releasing
+
+After changing any file, bump `VERSION` (and the stylesheet's `?v=`) in `index.html`. Every module loads with that version in its URL, so browsers never mix old and new files after an update.
 
 ## Libraries
 

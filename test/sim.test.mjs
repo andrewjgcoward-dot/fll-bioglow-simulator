@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { Sim } from '../src/sim.js';
+import { Sim, calibrateWheel, calibrateTrack, calibrateTop } from '../src/sim.js';
 import { flatToAst, SPEC, node, lit } from '../src/blocks.js';
 import { programToJson, jsonToProgram } from '../src/blocks-json.js';
 import { importProject, exportLlsp3, makeZip, buildProject } from '../src/spike-io.js';
@@ -378,6 +378,69 @@ test('sounds play for their length and volume can change', () => {
   assert.equal(sim.vars.vol, 30);
   assert.deepEqual(heard.filter(e => e.type !== 'stop').map(e => e.type + ':' + (e.name || e.note) + ':' + e.volume), ['sound:Cat Meow 1:30', 'beep:72:30']);
   assert.ok(t > 1.45 && t < 1.7, 'waited for the sound and the beep: ' + t);
+});
+
+
+test('calibration recovers a robot\'s real wheel size, spacing and speed', () => {
+  // A pretend real robot with odd numbers; "measure" it with the three calibration programs.
+  const real = { wheel: 61, track: 131, top: 870, ramp: 0.3, collide: false };
+  // Drive east along the middle of the mat so nothing is in the way.
+  const measure = (program) => { const sim = new Sim(real, { x: 200, y: 750, h: 90 }, []); runToEnd(sim, program); return sim; };
+  const fwd = measure(prog([['move', { dir: 'forward', val: '5', unit: 'rotations' }]]));
+  const cm1 = (fwd.pose.x - 200) / 10;
+  const spin = measure(prog([['move', { dir: 'clockwise', val: '2', unit: 'rotations' }]]));
+  const timed = measure(prog([['speed', { pct: '50' }], ['move', { dir: 'forward', val: '2', unit: 'seconds' }]]));
+  const cm3 = (timed.pose.x - 200) / 10;
+  const wheel = calibrateWheel(5, cm1);
+  const track = calibrateTrack(2, spin.pose.h - 90, wheel);
+  const top = calibrateTop(50, 2, cm3, wheel, real.ramp);
+  assert.ok(Math.abs(wheel - 61) < 0.5, 'wheel ' + wheel);
+  assert.ok(Math.abs(track - 131) < 1.5, 'track ' + track);
+  assert.ok(Math.abs(top - 870) < 15, 'top speed ' + top);
+});
+
+test('with a speed-up ramp the robot starts slower but still stops at the distance', () => {
+  const run = (ramp) => { const sim = new Sim({ ramp, collide: false }, { x: 1000, y: 300, h: 0 }, []); const t = runToEnd(sim, prog([['move', { dir: 'forward', val: '30', unit: 'cm' }]])); return { t, y: sim.pose.y }; };
+  const instant = run(0), ramped = run(0.5);
+  assert.ok(Math.abs(ramped.y - 600) < 4, 'distance still 30 cm: ' + ramped.y);
+  // 0.5 s to full speed is 0.25 s to the default 50 %, costing about 0.125 s.
+  assert.ok(ramped.t > instant.t + 0.08, 'took longer: ' + instant.t + ' vs ' + ramped.t);
+});
+
+test('mission models react: pushing M03 drops the flag, touching M10 loses points', () => {
+  // M03 Flip the Rock is at (80, 658); drive the robot west into it.
+  const sim = new Sim({}, { x: 300, y: 658, h: -90 }, []);
+  assert.equal(sim.mission.m10a, true, 'M10 starts complete');
+  runToEnd(sim, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+  assert.equal(sim.mission.m03a, true);
+  assert.ok(sim.objects.find(o => o.key === 'm03').done);
+  assert.ok(sim.logLines.some(l => l.includes('M03')));
+  // M10 snail habitat is at (1040, 720); bump it from the east.
+  const bump = new Sim({}, { x: 1220, y: 720, h: -90 }, []);
+  runToEnd(bump, prog([['move', { dir: 'forward', val: '15', unit: 'cm' }]]));
+  assert.equal(bump.mission.m10b, false);
+});
+
+test('pushing M02 pops seeds; seeds pushed into the M14 dock count', () => {
+  const sim = new Sim({}, { x: 630, y: 360, h: 0 }, []);
+  runToEnd(sim, prog([['move', { dir: 'forward', val: '15', unit: 'cm' }]]));
+  const seeds = sim.objects.filter(o => o.seed);
+  assert.ok(seeds.length >= 2, 'seeds popped: ' + seeds.length);
+  assert.equal(sim.mission.m02, seeds.length);
+  // Put a seed inside the dock holding M14 (city dock by default) and check the count.
+  const dock = sim.objects.find(o => o.dock && o.holds === 'M14');
+  Object.assign(seeds[0], { x: dock.x, y: dock.y });
+  sim.runMechanisms(0.01);
+  assert.equal(sim.mission.m14a, 1);
+});
+
+test('a lift arm pressing down on M12 raises the cane', () => {
+  const arm = { id: 'a', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'up', cw: 'lowers', ratio: 1 };
+  // M12 is at (1940, 758): sit just below it facing up so the arm reaches over it.
+  const sim = new Sim({ arms: [arm] }, { x: 1940, y: 560, h: 0 }, []);
+  sim.cfg.collide = true;
+  runToEnd(sim, prog([['motor', { port: 'E', dir: 'clockwise', val: '90', unit: 'degrees' }]]));
+  assert.equal(sim.mission.m12a, true);
 });
 
 test('reads deflate-compressed files like the SPIKE app writes', async () => {

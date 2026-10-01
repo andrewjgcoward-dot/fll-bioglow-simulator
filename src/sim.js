@@ -1,13 +1,14 @@
 // Robot simulation: a two-wheel SPIKE Prime drive base on the BioGlow mat.
 // Heading is in degrees, clockwise from "north" (away from the home wall).
 
-import { FW, FH, HOME_R, MODELS, DOCKS, LINES, MATCH_SECONDS } from './field.js';
+import { FW, FH, HOME_R, MODELS, DOCKS, LINES, MATCH_SECONDS, MECHANISMS, DEFAULT_DOCKS } from './field.js';
 
 // Robot-local coordinates: origin at the middle of the wheel axle, x to the right, y forward (mm).
 export const DEFAULT_CONFIG = {
   wheel: 56,        // wheel diameter, mm
   track: 112,       // distance between wheels, mm
   top: 1000,        // wheel speed at 100 %, degrees per second
+  ramp: 0,          // seconds for the wheels to reach full speed (0 = instant)
   robotW: 160, robotL: 200,
   axleBack: 100,    // distance from the back edge of the body to the wheel axle, mm
   pair: 'AB', colorPort: 'C', distPort: 'D', forcePort: 'none',
@@ -47,7 +48,7 @@ export function armGeom(arm, motorDeg) {
 
 // Loose pieces start here; teams can drag them anywhere and add more.
 export const LOOSE_DEFAULTS = [
-  { id: 'keystone', n: 'K', name: 'Keystone species (your build)', x: 400, y: 110, w: 64, h: 64, r: 0, loose: true }
+  { id: 'keystone', n: 'K', name: 'Keystone species (your team builds it for M13)', x: 170, y: 160, w: 64, h: 64, r: 0, loose: true }
 ];
 
 const DRIVE_S = { forward: 0, back: 0, clockwise: 100, counterclockwise: -100 };
@@ -134,6 +135,7 @@ export class Sim {
     this.cfg = normalizeConfig(config);
     this.start = Object.assign({ x: 240, y: 240, h: 0 }, start);
     this.pieces = pieces || [];
+    this.docks = Object.assign({}, DEFAULT_DOCKS); // which mission model sits on each dock
     this.logLines = [];
     this.onLog = null;
     this.matchOn = false;
@@ -156,7 +158,7 @@ export class Sim {
   // Field objects for this run: fixed models, docks, then loose pieces.
   resetObjects() {
     this.objects = MODELS.map(m => Object.assign({}, m))
-      .concat(DOCKS.map(d => Object.assign({ dock: true }, d)))
+      .concat(DOCKS.map(d => Object.assign({ dock: true, holds: this.docks[d.key] }, d)))
       .concat(this.pieces.map(p => Object.assign({}, p, { loose: true })));
   }
 
@@ -183,7 +185,56 @@ export class Sim {
     this.resetHub();
     this.trail = []; this.seen = []; this.trailT = 0;
     this.hit = null;
+    this.resetMission();
     this.sens = this.readSensors(this.pose);
+  }
+
+  // --- mission mechanisms (simplified; see MECHANISMS in field.js) ---
+  resetMission() {
+    this.mission = { m10a: true, m10b: true, m02: 0, m13: false, m14a: 0 };
+    this.mechDone = new Set(); this.holdT = {}; this.contacts = new Set();
+  }
+
+  // Remember how the robot touched a model this step: 'push' or 'press'.
+  touch(o, how) {
+    const k = o.dock ? 'dock:' + o.holds : o.key;
+    if (k) this.contacts.add(k + '|' + how);
+  }
+
+  runMechanisms(dt) {
+    const now = this.contacts; this.contacts = new Set();
+    MECHANISMS.forEach((m, i) => {
+      const k = m.model || 'dock:' + m.dock;
+      const hit = m.how === 'touch' ? [...now].some(c => c.startsWith(k + '|')) : now.has(k + '|' + m.how);
+      if (m.hold) { this.holdT[i] = hit ? (this.holdT[i] || 0) + dt : 0; if (this.holdT[i] < m.hold) return; }
+      else if (!hit) return;
+      if (this.mechDone.has(i)) return;
+      this.mechDone.add(i);
+      for (const key of m.sets || []) this.mission[key] = true;
+      for (const key of m.clears || []) this.mission[key] = false;
+      const model = this.objects.find(o => o.key === m.model);
+      if (model) { if (m.how === 'touch') model.hurt = true; else model.done = true; }
+      if (m.lifts) { const o = this.objects.find(x => x.key === m.lifts); if (o) o.lifted = true; }
+      if (m.seeds && model) this.popSeeds(model, m.seeds);
+      this.log(m.says + ' (simplified)');
+    });
+    // Counted from where pieces are: keystone species in the M13 dock, seeds in the M14 dock.
+    const dockOf = (name) => this.objects.find(o => o.dock && o.holds === name);
+    const inDock = (p, name) => { const d = dockOf(name); return !!d && inside([p.x, p.y], d); };
+    this.mission.m13 = this.objects.some(o => o.loose && o.id === 'keystone' && inDock(o, 'M13'));
+    this.mission.m14a = this.objects.filter(o => o.seed && inDock(o, 'M14')).length;
+  }
+
+  // Seeds fly off the stalk and land around it as loose pieces the robot can collect.
+  popSeeds(model, count) {
+    let n = 0;
+    for (let a = 0; a < 360 && n < count; a += 40) {
+      const r = rad(a + 20);
+      const seed = { id: 'seed' + (this.objects.length + n), n: 'S', name: 'Seed', x: model.x + Math.cos(r) * 110, y: model.y + Math.sin(r) * 110, w: 30, h: 30, r: a, loose: true, seed: true };
+      if (this.objectBlocked(seed) || this.solidBoxes(this.pose).some(b => overlap(b, seed))) continue;
+      this.objects.push(seed); n++;
+    }
+    this.mission.m02 += n;
   }
 
   // Robot-local point (x right, y forward from the axle middle) to field coordinates.
@@ -217,7 +268,7 @@ export class Sim {
   // Docks are low platforms, so pieces can slide onto them.
   objectBlocked(o) {
     for (const q of corners(o)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return true;
-    for (const other of this.objects) if (other !== o && !other.dock && overlap(o, other)) return true;
+    for (const other of this.objects) if (other !== o && !other.dock && !other.lifted && overlap(o, other)) return true;
     return false;
   }
 
@@ -228,7 +279,9 @@ export class Sim {
     const moved = [];
     const undo = () => { for (const [o, s] of moved) Object.assign(o, s); };
     for (const box of boxes) for (const o of this.objects) {
+      if (o.lifted) continue;
       const m = mtv(box, o); if (!m) continue;
+      this.touch(o, 'push');
       if (!this.pushable(o)) { undo(); return o.name; }
       const saved = { x: o.x, y: o.y, r: o.r };
       const push = m.depth + 0.5;
@@ -264,7 +317,7 @@ export class Sim {
     if (arm.motion === 'sweep') return this.pushOut([box]);
     // A lift arm coming down presses on whatever is under it instead of shoving it aside.
     for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
-    if (this.cfg.collide) for (const o of this.objects) if (!o.dock && overlap(box, o)) return o.name;
+    if (this.cfg.collide) for (const o of this.objects) if (!o.lifted && overlap(box, o)) { this.touch(o, 'press'); return o.name; }
     return null;
   }
 
@@ -295,7 +348,7 @@ export class Sim {
     if (f[0] < -1e-9) t = Math.min(t, -o[0] / f[0]);
     if (f[1] > 1e-9) t = Math.min(t, (FH - o[1]) / f[1]);
     if (f[1] < -1e-9) t = Math.min(t, -o[1] / f[1]);
-    for (const b of this.objects || []) { const h = rayBox(o, f, b); if (h !== null) t = Math.min(t, h); }
+    for (const b of this.objects || []) { if (b.lifted) continue; const h = rayBox(o, f, b); if (h !== null) t = Math.min(t, h); }
     let yaw = p.h - (this.yawZero === undefined ? p.h : this.yawZero);
     yaw = ((yaw % 360) + 540) % 360 - 180;
     if (!c.yawCW) yaw = -yaw;
@@ -604,6 +657,7 @@ export class Sim {
   }
   setDrive(f) {
     if (this.driveAction) { this.driveAction.done = true; this.driveAction = null; }
+    this.lastBump = null;
     this.drive = f;
   }
   wheelDegrees(val, unit) {
@@ -668,14 +722,23 @@ export class Sim {
     const a = this.driveAction && !this.driveAction.done ? this.driveAction : null;
     const cmd = a || this.drive;
     let fast = 0, stalled = false;
+    if (!cmd) this.vel = { L: 0, R: 0 };
     if (cmd) {
-      const L = cmd.L / 100 * cfg.top, R = cmd.R / 100 * cfg.top; // wheel degrees per second
+      // Wheel degrees per second. With a speed-up ramp the wheels accelerate; slowing down is instant (brake).
+      let L = cmd.L / 100 * cfg.top, R = cmd.R / 100 * cfg.top;
+      if (cfg.ramp > 0) {
+        const step = cfg.top / cfg.ramp * dt, v = this.vel || { L: 0, R: 0 };
+        const toward = (cur, goal) => Math.abs(goal) <= Math.abs(cur) && Math.sign(goal) === Math.sign(cur) ? goal : cur + clamp(goal - cur, -step, step);
+        L = toward(v.L, L); R = toward(v.R, R);
+      }
+      this.vel = { L, R };
       const k = Math.PI * cfg.wheel / 360;
       const vL = L * k, vR = R * k, v = (vL + vR) / 2, w = (vL - vR) / cfg.track;
       const h0 = rad(this.pose.h), h1 = h0 + w * dt, hm = (h0 + h1) / 2;
       const np = { x: this.pose.x + v * Math.sin(hm) * dt, y: this.pose.y + v * Math.cos(hm) * dt, h: h1 * 180 / Math.PI };
       const hit = this.tryMove(np);
-      if (hit) { stalled = true; if (this.hit !== hit) this.log('Bumped into ' + hit + '.'); this.hit = hit; }
+      // Log a bump once per move, not every time the wheels grind against the same thing.
+      if (hit) { stalled = true; if (this.lastBump !== hit) this.log('Bumped into ' + hit + '.'); this.hit = hit; this.lastBump = hit; }
       else {
         this.pose = np; this.hit = null;
         fast = Math.max(Math.abs(L), Math.abs(R)) * dt;
@@ -732,6 +795,8 @@ export class Sim {
       }
     }
 
+    this.runMechanisms(dt);
+
     if (this.matchOn) {
       this.matchT += dt;
       if (this.matchT >= MATCH_SECONDS) {
@@ -780,3 +845,14 @@ function mathop(fn, x) {
 // What the simulated color sensor reports. Reflected light values are rough guesses for the mat.
 const COLOR_ID = { black: 0, violet: 1, blue: 3, azure: 4, green: 6, yellow: 7, red: 9, white: 10, none: -1 };
 const REFLECT = { black: 8, white: 98, red: 60, blue: 30, green: 25, yellow: 85, none: 0 };
+
+// Calibration from test runs on the real robot (see the Robot tab).
+// 1. "move forward for n rotations" went cm centimetres -> effective wheel diameter (mm).
+export const calibrateWheel = (n, cm) => cm * 10 / (n * Math.PI);
+// 2. "move clockwise for n rotations" turned deg degrees -> effective wheel spacing (mm).
+//    Each wheel rolls n·π·D; a spin turns the robot by 2 × that ÷ spacing.
+export const calibrateTrack = (n, deg, wheel) => 360 * n * wheel / deg;
+// 3. "move forward for sec seconds" at pct % went cm centimetres -> wheel speed at 100 % (°/s).
+//    The ramp is the time to reach full speed, so reaching pct % takes ramp × pct/100 and
+//    loses about half of that.
+export const calibrateTop = (pct, sec, cm, wheel, ramp = 0) => (cm * 10 / Math.max(0.1, sec - ramp * pct / 200)) / (Math.PI * wheel) * 360 / (pct / 100);

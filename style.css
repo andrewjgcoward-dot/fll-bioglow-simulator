@@ -148,3 +148,17 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 .vars { font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow: auto; }
 #sound[aria-pressed="false"] #sound-wave { display: none; }
 #sound[aria-pressed="false"] { color: var(--muted); }
+
+.calib { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.calib summary { cursor: pointer; font-weight: 700; min-height: 32px; }
+.calib-step { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-top: 12px; font-size: 14px; }
+.calib-step strong { width: 100%; }
+.calib-step .fine { width: 100%; }
+.calib-step code { font-family: var(--mono); font-size: 12px; background: var(--bg); padding: 2px 6px; border-radius: 6px; }
+.calib-step code input { width: 52px; min-height: 28px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--text); font: inherit; }
+.calib-step label { display: flex; flex-direction: column; gap: 4px; color: var(--text-2); }
+.calib-step label input { min-height: 40px; width: 130px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); }
+.tag.sim { color: var(--accent); border-color: #2E6B4C; flex-shrink: 0; }
+.line.docks { flex-wrap: wrap; }
+.line.docks label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); }
+.line.docks select { min-height: 32px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); }

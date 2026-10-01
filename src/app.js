@@ -1,8 +1,8 @@
-import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore } from './field.js';
+import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, DOCKS, DEFAULT_DOCKS, AUTO_KEYS } from './field.js';
 import { PORTS, PAIRS, DEMO, flatToAst, emptyProgram } from './blocks.js';
 import { programToJson, jsonToProgram } from './blocks-json.js';
 import { createWorkspace, registerNames } from './workspace.js';
-import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside } from './sim.js';
+import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside, calibrateWheel, calibrateTrack, calibrateTop } from './sim.js';
 import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 
@@ -34,19 +34,21 @@ const state = {
   start: Object.assign({ x: 240, y: 240, h: 0 }, saved.start),
   pieces: Array.isArray(saved.pieces) ? saved.pieces : structuredClone(LOOSE_DEFAULTS),
   score: saved.score || {}, tokens: saved.tokens ?? 6, inspection: !!saved.inspection,
-  grid: saved.grid ?? true, scale: 1
+  grid: saved.grid ?? true, scale: 1,
+  autoScore: saved.autoScore ?? true, docks: Object.assign({}, DEFAULT_DOCKS, saved.docks)
 };
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
       program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
-      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid
+      score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks
     }));
   } catch { /* storage unavailable: keep working without it */ }
 }
 
 const sim = new Sim(state.cfg, state.start, state.pieces);
 sim.cfg = state.cfg; // share the object so Robot tab edits apply immediately
+sim.docks = state.docks; sim.reset();
 sim.onLog = () => renderLog();
 
 // ---------- hub: light matrix, center light, buttons, variables, sound ----------
@@ -135,12 +137,14 @@ function drawObject(o) {
   const g = svgEl('g', {});
   if (o.dock) {
     svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 8, fill: 'rgba(242,196,138,.18)', stroke: '#F2C48A', 'stroke-width': 4, 'stroke-dasharray': '12 8' }, g);
-    g.label = svgEl('text', { 'text-anchor': 'middle', y: 8, class: 'dock-l' }, g); g.label.textContent = '13–15';
+    g.label = svgEl('text', { 'text-anchor': 'middle', y: 8, class: 'dock-l' }, g); g.label.textContent = o.holds.replace('M', '') + ' ' + o.key;
     return g;
   }
   const shape = o.round ? svgEl('ellipse', { rx: o.w / 2, ry: o.h / 2 }, g) : svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 6 }, g);
-  shape.setAttribute('fill', o.loose ? '#C9A3FF' : '#E9DDBF');
-  shape.setAttribute('stroke', o.loose ? '#2A1747' : '#3B2F1E'); shape.setAttribute('stroke-width', 4);
+  // Mission state: done (green), disturbed (red), lifted off the mat (dashed outline).
+  shape.setAttribute('fill', o.loose ? (o.seed ? '#E2B07A' : '#C9A3FF') : o.done ? '#9BE3B8' : o.hurt ? '#F2A6A0' : o.lifted ? 'none' : '#E9DDBF');
+  shape.setAttribute('stroke', o.loose ? '#2A1747' : o.done ? '#1E7A45' : o.hurt ? '#9B2C24' : '#3B2F1E'); shape.setAttribute('stroke-width', 4);
+  if (o.lifted) shape.setAttribute('stroke-dasharray', '8 6');
   if (o.loose) g.setAttribute('class', 'piece');
   svgEl('title', {}, g).textContent = o.name + (o.loose ? ' (drag to move)' : '');
   if (o.n) { g.label = svgEl('text', { 'text-anchor': 'middle', y: 9, class: o.loose ? 'piece-l' : 'model-l' }, g); g.label.textContent = o.n; }
@@ -149,9 +153,10 @@ function drawObject(o) {
 
 function syncObjects() {
   const objs = sim.objects;
-  if (refs.objEls.length !== objs.length || refs.objEls.some((g, i) => g.obj !== objs[i])) {
+  const look = (o) => (o.done ? 1 : 0) + (o.hurt ? 2 : 0) + (o.lifted ? 4 : 0);
+  if (refs.objEls.length !== objs.length || refs.objEls.some((g, i) => g.obj !== objs[i] || g.look !== look(objs[i]))) {
     refs.objs.innerHTML = '';
-    refs.objEls = objs.map(o => { const g = drawObject(o); g.obj = o; refs.objs.appendChild(g); return g; });
+    refs.objEls = objs.map(o => { const g = drawObject(o); g.obj = o; g.look = look(o); refs.objs.appendChild(g); return g; });
   }
   for (const g of refs.objEls) {
     const o = g.obj;
@@ -163,6 +168,7 @@ function syncObjects() {
 function drawField() {
   const p = sim.pose, s = sim.sens;
   syncObjects();
+  syncMission();
   refs.robot.setAttribute('transform', `translate(${p.x} ${Y(p.y)}) rotate(${p.h})`);
   drawRobot(refs.robot, state.cfg, sim.arms, { stroke: sim.hit ? '#F2A6A0' : sim.running ? '#8FE3B0' : '#1A1A1A', colorFill: SWATCH[s.color] || '#5B7066' });
   refs.trail.setAttribute('points', sim.trail.map(([x, y]) => `${x.toFixed(0)},${Y(y).toFixed(0)}`).join(' '));
@@ -279,19 +285,32 @@ $('tab-code').addEventListener('click', (e) => {
 
 // ---------- score tab ----------
 
+// Copy what the simulated models did onto the score sheet.
+let lastMission = '';
+function syncMission() {
+  if (!state.autoScore) return;
+  const now = JSON.stringify(AUTO_KEYS.map(k => sim.mission[k]));
+  if (now === lastMission) return;
+  lastMission = now;
+  for (const k of AUTO_KEYS) state.score[k] = sim.mission[k] ?? false;
+  save(); renderScore();
+}
+
 function renderScore() {
   const sc = state.score;
   const total = totalScore(sc, state.tokens, state.inspection);
   $('total-tab').textContent = total;
   $('tab-score').innerHTML = `
-    <div class="score-total"><div><div class="section-h">Match score</div><div class="fine">Tick what your robot actually achieved.</div></div><div class="big">${total}</div></div>
+    <div class="score-total"><div><div class="section-h">Match score</div><div class="fine">${state.autoScore ? 'Items marked “sim” fill in from the simulation; tick the rest yourself.' : 'Tick what your robot actually achieved.'}</div></div><div class="big">${total}</div></div>
+    <label class="line"><input type="checkbox" data-auto${state.autoScore ? ' checked' : ''}><span class="grow">Fill in from the simulation (simplified: a push or press on the right model completes it)</span></label>
+    <div class="line docks"><span class="grow">Docks for missions 13–15</span>${DOCKS.map(d => `<label>${d.key}<select data-dock="${d.key}">${['M13', 'M14', 'M15'].map(m => `<option${state.docks[d.key] === m ? ' selected' : ''}>${m}</option>`).join('')}</select></label>`).join('')}</div>
     <label class="line"><input type="checkbox" data-insp${state.inspection ? ' checked' : ''}><span class="grow">Equipment inspection: everything fits in one launch area, under 305 mm</span><span class="mono">20</span></label>
     <div class="line"><span class="grow">Precision tokens left (lose one per interruption outside home)</span>
       <button type="button" class="step" data-tok="-1" aria-label="Remove a precision token">−</button><span class="mono">${state.tokens}</span>
       <button type="button" class="step" data-tok="1" aria-label="Add a precision token">+</button><span class="mono">${TOKEN_PTS[state.tokens]}</span></div>
     ${MISSIONS.map(m => `<div class="mission">
       <div class="mission-h"><span class="mid">${m.id}</span><strong class="grow">${esc(m.name)}</strong>${m.noEquip ? '<span class="tag">not touching equipment</span>' : ''}<span class="mono">${missionPoints(m, sc)}</span></div>
-      ${m.items.map(it => `<div class="mitem">${it.count
+      ${m.items.map(it => `<div class="mitem">${state.autoScore && AUTO_KEYS.includes(it.k) ? '<span class="tag sim">sim</span>' : ''}${it.count
         ? `<span class="grow">${esc(it.label)}</span><button type="button" class="step" data-cnt="${it.k}" data-d="-1" aria-label="Fewer">−</button><span class="mono">${sc[it.k] || 0}</span><button type="button" class="step" data-cnt="${it.k}" data-d="1" aria-label="More">+</button>`
         : `<label><input type="checkbox" data-chk="${it.k}" data-group="${it.group || ''}"${sc[it.k] ? ' checked' : ''}><span>${esc(it.label)}</span></label>`
       }<span class="pts">${it.zero ? '×0' : it.count ? it.pts + ' ea' : it.pts}</span></div>`).join('')}
@@ -302,6 +321,14 @@ function renderScore() {
 $('tab-score').addEventListener('change', (e) => {
   const t = e.target;
   if (t.hasAttribute('data-insp')) state.inspection = t.checked;
+  else if (t.hasAttribute('data-auto')) { state.autoScore = t.checked; lastMission = ''; syncMission(); }
+  else if (t.dataset.dock) {
+    // Each model sits on one dock: swap with whichever dock had the chosen model.
+    const other = Object.keys(state.docks).find(k => state.docks[k] === t.value);
+    if (other) state.docks[other] = state.docks[t.dataset.dock];
+    state.docks[t.dataset.dock] = t.value;
+    if (!sim.running) { sim.reset(); drawField(); }
+  }
   else if (t.dataset.chk) {
     if (t.checked && t.dataset.group) for (const m of MISSIONS) for (const it of m.items) if (it.group === t.dataset.group) state.score[it.k] = false;
     state.score[t.dataset.chk] = t.checked;
@@ -319,30 +346,86 @@ $('tab-score').addEventListener('click', (e) => {
 
 // ---------- robot tab ----------
 
-const NUM_FIELDS = [['wheel', 'Wheel diameter (mm)'], ['track', 'Wheel spacing (mm)'], ['top', 'Top wheel speed (°/s)'], ['robotW', 'Robot width (mm)'], ['robotL', 'Robot length (mm)'], ['axleBack', 'Wheels from back edge (mm)']];
+// Robot parts are placed on a LEGO grid: 1 stud = 8 mm, snapping to half studs.
+const STUD = 8, SNAP = 4, REACH = 260;
+const studs = (mm) => +(mm / STUD).toFixed(1);
 const FACES = ['front', 'right', 'back', 'left'];
-const SNAP = 5, REACH = 260;
-const opt = (opts, cur, label = (o) => o) => opts.map(o => `<option value="${o}"${o === cur ? ' selected' : ''}>${esc(label(o))}</option>`).join('');
+const WHEELS = [[56, '56 mm (SPIKE Prime wheel)'], [88, '88 mm (large wheel)'], [62.4, '62.4 mm'], [43.2, '43.2 mm'], ['custom', 'Other size…']];
+const NUM_FIELDS = [['track', 'Wheel spacing (mm)'], ['robotW', 'Robot width (mm)'], ['robotL', 'Robot length (mm)'], ['axleBack', 'Wheels from back edge (mm)'], ['top', 'Top wheel speed (°/s)'], ['ramp', 'Speed-up time (s)']];
+const opt = (opts, cur, label = (o) => o) => opts.map(o => `<option value="${o}"${String(o) === String(cur) ? ' selected' : ''}>${esc(label(o))}</option>`).join('');
 
 function renderRobot() {
   const c = state.cfg;
+  const preset = WHEELS.some(([d]) => d === c.wheel) ? c.wheel : 'custom';
   $('tab-robot').innerHTML = `
     <div class="section-h">Robot layout</div>
-    <div class="fine">Drag the color sensor (circle), distance sensor (eyes) and arms (orange, blue pivot). Tap one to change it. Positions snap to ${SNAP} mm.</div>
+    <div class="fine">Drag the wheels, color sensor (circle), distance sensor (eyes) and arms (orange, blue pivot). Tap a part to change it. Each grid square is 1 LEGO stud (8 mm).</div>
     <svg id="robot-editor" viewBox="${-REACH} ${-REACH} ${REACH * 2} ${REACH * 2}" role="img" aria-label="Top view of the robot. Drag parts to place them."></svg>
     <div class="row"><button type="button" class="btn small" data-add-arm>Add arm</button><span class="muted" id="ed-pos"></span></div>
     <div id="part-props" class="props"></div>
+
     <div class="section-h">Drive base</div>
-    <div class="form-grid">${NUM_FIELDS.map(([k, label]) => `<label>${label}<input type="number" step="any" data-cfgnum="${k}" value="${c[k]}"></label>`).join('')}
+    <div class="form-grid">
+      <label>Wheels<select data-wheel>${opt(WHEELS.map(w => w[0]), preset, (v) => WHEELS.find(w => w[0] === v)[1])}</select></label>
+      <label>Wheel diameter (mm)<input type="number" step="any" data-cfgnum="wheel" value="${c.wheel}"></label>
+      ${NUM_FIELDS.map(([k, label]) => `<label>${label}<input type="number" step="any" data-cfgnum="${k}" value="${c[k]}"></label>`).join('')}
       <label>Drive motors (left, right)<select data-cfg="pair">${opt(PAIRS, c.pair)}</select></label>
       <label>Force sensor port (front bumper)<select data-cfg="forcePort">${opt(['none'].concat(PORTS), c.forcePort)}</select></label>
     </div>
+
+    <details class="calib">
+      <summary>Calibrate from the real robot</summary>
+      <div class="fine">Run each test program on the real robot on the mat, measure, and press Apply. The simulator then uses what your robot really does.</div>
+      <div class="calib-step">
+        <strong>1 · Distance</strong>
+        <div class="fine">Program: <code>move forward for <input type="number" data-cal="n1" value="5" aria-label="Rotations"> rotations</code></div>
+        <label>Distance it moved (cm)<input type="number" step="any" data-cal="d1" placeholder="e.g. 87"></label>
+        <button type="button" class="btn small" data-apply="1">Apply</button><span class="muted" data-out="1"></span>
+      </div>
+      <div class="calib-step">
+        <strong>2 · Turning</strong>
+        <div class="fine">Program: <code>move clockwise for <input type="number" data-cal="n2" value="2" aria-label="Rotations"> rotations</code>, then read the yaw angle (or measure the turn).</div>
+        <label>How far it turned (degrees)<input type="number" step="any" data-cal="d2" placeholder="e.g. 355"></label>
+        <button type="button" class="btn small" data-apply="2">Apply</button><span class="muted" data-out="2"></span>
+      </div>
+      <div class="calib-step">
+        <strong>3 · Speed</strong>
+        <div class="fine">Program: <code>set movement speed to <input type="number" data-cal="p3" value="50" aria-label="Speed percent"> %</code>, then <code>move forward for <input type="number" data-cal="t3" value="2" aria-label="Seconds"> seconds</code></div>
+        <label>Distance it moved (cm)<input type="number" step="any" data-cal="d3" placeholder="e.g. 52"></label>
+        <button type="button" class="btn small" data-apply="3">Apply</button><span class="muted" data-out="3"></span>
+      </div>
+    </details>
+
     <label class="check"><input type="checkbox" data-cfgbool="yawCW"${c.yawCW ? ' checked' : ''}>Yaw angle increases when turning clockwise</label>
     <label class="check"><input type="checkbox" data-cfgbool="collide"${c.collide ? ' checked' : ''}>Models and pieces are solid (off: drive through everything)</label>
     <label class="check"><input type="checkbox" data-cfgbool="shove"${c.shove ? ' checked' : ''}>Robot can shove fixed mission models (just for fun; real ones are held down)</label>
     <label class="check"><input type="checkbox" data-grid${state.grid ? ' checked' : ''}>Show the 20 cm wireframe grid</label>
-    <div class="fine">Importing a SPIKE file sets the drive motors and sensor ports from its blocks. Arms push loose pieces and stop when they press on a model or the mat; mission mechanisms themselves aren't simulated yet. Model positions are traced from the wireframe and are approximate.</div>`;
+    <div class="fine">Importing a SPIKE file sets the drive motors and sensor ports from its blocks. Arms push loose pieces and stop when they press on a model or the mat. Model positions are traced from the wireframe and are approximate.</div>`;
   renderEditor(); renderProps();
+}
+
+// Work out wheel size, wheel spacing or top speed from a real test run.
+function calibrate(step) {
+  const v = (k) => parseFloat($('tab-robot').querySelector(`[data-cal="${k}"]`).value);
+  const c = state.cfg, out = $('tab-robot').querySelector(`[data-out="${step}"]`);
+  if (step === 1) {
+    const n = v('n1'), d = v('d1');
+    if (!(n > 0 && d > 0)) { out.textContent = 'Enter the rotations and the distance.'; return; }
+    c.wheel = Math.round(calibrateWheel(n, d) * 10) / 10;
+    out.textContent = `Wheel works like ${c.wheel} mm across.`;
+  } else if (step === 2) {
+    const n = v('n2'), deg = v('d2');
+    if (!(n > 0 && deg > 0)) { out.textContent = 'Enter the rotations and the angle.'; return; }
+    c.track = Math.round(calibrateTrack(n, deg, c.wheel) * 10) / 10;
+    out.textContent = `Wheels act ${c.track} mm apart.`;
+  } else {
+    const pct = v('p3'), t = v('t3'), d = v('d3');
+    if (!(pct > 0 && t > 0 && d > 0)) { out.textContent = 'Enter the speed, time and distance.'; return; }
+    c.top = Math.round(calibrateTop(pct, t, d, c.wheel, c.ramp || 0));
+    out.textContent = `Top wheel speed ${c.top} °/s.`;
+  }
+  save(); sim.sens = sim.readSensors(sim.pose); drawField(); renderEditor();
+  for (const k of ['wheel', 'track', 'top']) { const i = $('tab-robot').querySelector(`[data-cfgnum="${k}"]`); if (i) i.value = c[k]; }
 }
 
 function renderEditor() {
@@ -350,10 +433,11 @@ function renderEditor() {
   svg.textContent = '';
   const NS = 'http://www.w3.org/2000/svg';
   const grid = document.createElementNS(NS, 'g'); svg.appendChild(grid);
-  for (let v = -REACH + 10; v < REACH; v += 50) {
+  for (let i = -Math.floor(REACH / STUD); i <= Math.floor(REACH / STUD); i++) {
+    const v = i * STUD, major = i % 5 === 0;
     for (const [x1, y1, x2, y2] of [[v, -REACH, v, REACH], [-REACH, v, REACH, v]]) {
       const l = document.createElementNS(NS, 'line');
-      Object.entries({ x1, y1, x2, y2, stroke: 'rgba(255,255,255,.08)', 'stroke-width': 2 }).forEach(([k, val]) => l.setAttribute(k, val));
+      Object.entries({ x1, y1, x2, y2, stroke: major ? 'rgba(255,255,255,.13)' : 'rgba(255,255,255,.05)', 'stroke-width': major ? 1.5 : 1 }).forEach(([k, val]) => l.setAttribute(k, val));
       grid.appendChild(l);
     }
   }
@@ -370,10 +454,15 @@ function partOf(sel) {
 
 function renderProps() {
   const box = $('part-props'); if (!box) return;
-  const c = state.cfg, part = partOf(state.sel);
+  const c = state.cfg;
+  if (state.sel === 'wheel') {
+    box.innerHTML = `<div class="props-h">Wheels</div><div class="fine">Drag a wheel sideways to change the wheel spacing, or forward and back to move the axle. Spacing now: ${c.track} mm (${studs(c.track)} studs), wheels ${c.axleBack} mm from the back.</div>`;
+    return;
+  }
+  const part = partOf(state.sel);
   if (!part) { box.innerHTML = '<div class="fine">Tap a part to edit it.</div>'; return; }
-  const xy = `<label>Right of axle middle (mm)<input type="number" step="${SNAP}" data-pp="x" value="${part.x}"></label>
-              <label>Ahead of axle (mm)<input type="number" step="${SNAP}" data-pp="y" value="${part.y}"></label>`;
+  const xy = `<label>Right of axle middle (studs)<input type="number" step="0.5" data-pp="x" value="${studs(part.x)}"></label>
+              <label>Ahead of axle (studs)<input type="number" step="0.5" data-pp="y" value="${studs(part.y)}"></label>`;
   if (state.sel === 'color') {
     box.innerHTML = `<div class="props-h">Color sensor</div><div class="form-grid">
       <label>Port<select data-cfg="colorPort">${opt(PORTS, c.colorPort)}</select></label>${xy}</div>`;
@@ -387,7 +476,7 @@ function renderProps() {
       <label>Motor port<select data-pp="port">${opt(PORTS, part.port)}</select></label>
       <label>Movement<select data-pp="motion">${opt(['lift', 'sweep'], part.motion, o => o === 'lift' ? 'Lift / press (up and down)' : 'Sweep (side to side, flat)')}</select></label>
       <label>Points<select data-pp="dir">${opt(FACES, part.dir)}</select></label>
-      <label>Length (mm)<input type="number" step="${SNAP}" data-pp="len" value="${part.len}"></label>
+      <label>Length (studs)<input type="number" step="0.5" data-pp="len" value="${studs(part.len)}"></label>
       ${lift
         ? `<label>Starts<select data-pp="rest">${opt(['up', 'down'], part.rest)}</select></label>
            <label>Motor clockwise<select data-pp="cw">${opt(['lowers', 'raises'], part.cw)}</select></label>`
@@ -402,16 +491,21 @@ function robotChanged() { save(); sim.sens = sim.readSensors(sim.pose); drawFiel
 
 $('tab-robot').addEventListener('change', (e) => {
   const t = e.target, part = partOf(state.sel);
-  if (t.dataset.cfgnum) { const v = parseFloat(t.value); if (isFinite(v) && v > 0) state.cfg[t.dataset.cfgnum] = v; }
+  if (t.dataset.cal) return;
+  if (t.hasAttribute('data-wheel')) {
+    if (t.value !== 'custom') { state.cfg.wheel = Number(t.value); const i = $('tab-robot').querySelector('[data-cfgnum="wheel"]'); if (i) i.value = state.cfg.wheel; }
+  }
+  else if (t.dataset.cfgnum) { const k = t.dataset.cfgnum, v = parseFloat(t.value); if (isFinite(v) && (v > 0 || (k === 'ramp' && v === 0))) state.cfg[k] = v; }
   else if (t.dataset.cfg) state.cfg[t.dataset.cfg] = t.value;
   else if (t.dataset.cfgbool) state.cfg[t.dataset.cfgbool] = t.checked;
   else if (t.hasAttribute('data-grid')) state.grid = t.checked;
   else if (t.dataset.pp && part) {
     const k = t.dataset.pp;
-    if (['x', 'y', 'len', 'ratio'].includes(k)) {
-      const v = parseFloat(t.value);
-      if (isFinite(v) && (k === 'x' || k === 'y' || v > 0)) part[k] = k === 'x' || k === 'y' ? Math.max(-REACH + 10, Math.min(REACH - 10, v)) : v;
-    } else {
+    if (['x', 'y', 'len'].includes(k)) {
+      const v = parseFloat(t.value) * STUD;
+      if (isFinite(v) && (k !== 'len' || v > 0)) part[k] = k === 'len' ? v : Math.max(-REACH + 10, Math.min(REACH - 10, v));
+    } else if (k === 'ratio') { const v = parseFloat(t.value); if (v > 0) part.ratio = v; }
+    else {
       part[k] = t.value;
       if (k === 'motion') part.cw = t.value === 'sweep' ? 'right' : 'lowers';
       renderProps();
@@ -421,10 +515,12 @@ $('tab-robot').addEventListener('change', (e) => {
 });
 
 $('tab-robot').addEventListener('click', (e) => {
+  const apply = e.target.closest('[data-apply]');
+  if (apply) { calibrate(Number(apply.dataset.apply)); return; }
   if (e.target.closest('[data-add-arm]')) {
     const used = new Set(state.cfg.arms.map(a => a.port).concat(state.cfg.pair.split(''), [state.cfg.colorPort, state.cfg.distPort]));
     const port = ['E', 'F', 'D', 'C', 'B', 'A'].find(p => !used.has(p)) || 'F';
-    const arm = { id: 'a' + Date.now().toString(36), port, motion: 'lift', x: 0, y: state.cfg.robotL - state.cfg.axleBack, dir: 'front', len: 90, rest: 'up', cw: 'lowers', ratio: 1 };
+    const arm = { id: 'a' + Date.now().toString(36), port, motion: 'lift', x: 0, y: state.cfg.robotL - state.cfg.axleBack, dir: 'front', len: 88, rest: 'up', cw: 'lowers', ratio: 1 };
     state.cfg.arms.push(arm); state.sel = 'arm:' + arm.id; renderProps(); robotChanged();
   } else if (e.target.closest('[data-remove-arm]')) {
     state.cfg.arms = state.cfg.arms.filter(a => 'arm:' + a.id !== state.sel); state.sel = 'color'; renderProps(); robotChanged();
@@ -441,17 +537,33 @@ const edPoint = (e) => {
 const snapMm = (v) => Math.max(-REACH + 10, Math.min(REACH - 10, Math.round(v / SNAP) * SNAP));
 $('tab-robot').addEventListener('pointerdown', (e) => {
   const hit = e.target.closest('#robot-editor [data-part]'); if (!hit) return;
-  state.sel = hit.dataset.part; const part = partOf(state.sel); if (!part) return;
   const p = edPoint(e);
-  edDrag = { part, dx: part.x - p.x, dy: part.y - p.y };
+  if (hit.dataset.part.startsWith('wheel')) {
+    state.sel = 'wheel';
+    edDrag = { wheel: true, lastY: snapMm(p.y) };
+  } else {
+    state.sel = hit.dataset.part; const part = partOf(state.sel); if (!part) return;
+    edDrag = { part, dx: part.x - p.x, dy: part.y - p.y };
+  }
   try { $('robot-editor').setPointerCapture(e.pointerId); } catch { /* pointer gone */ }
   e.preventDefault(); renderEditor(); renderProps();
 });
 $('tab-robot').addEventListener('pointermove', (e) => {
   if (!edDrag) return;
-  const p = edPoint(e);
-  edDrag.part.x = snapMm(p.x + edDrag.dx); edDrag.part.y = snapMm(p.y + edDrag.dy);
-  $('ed-pos').textContent = `${edDrag.part.x} mm right, ${edDrag.part.y} mm ahead of the axle`;
+  const p = edPoint(e), c = state.cfg;
+  if (edDrag.wheel) {
+    // Sideways: wheel spacing. Forward/back: move the axle, keeping every other part where it is on the body.
+    c.track = Math.max(40, Math.min(400, Math.round(Math.abs(p.x) * 2 / STUD) * STUD));
+    const y = snapMm(p.y), dy = y - edDrag.lastY;
+    if (dy && c.axleBack + dy >= 0 && c.axleBack + dy <= c.robotL) {
+      c.axleBack += dy; edDrag.lastY = y;
+      for (const part of [c.color, c.dist, ...c.arms]) part.y -= dy;
+    }
+    $('ed-pos').textContent = `wheels ${studs(c.track)} studs apart, ${studs(c.axleBack)} studs from the back`;
+  } else {
+    edDrag.part.x = snapMm(p.x + edDrag.dx); edDrag.part.y = snapMm(p.y + edDrag.dy);
+    $('ed-pos').textContent = `${studs(edDrag.part.x)} studs right, ${studs(edDrag.part.y)} studs ahead of the axle`;
+  }
   renderEditor(); drawField();
 });
 const edEnd = () => { if (!edDrag) return; edDrag = null; renderProps(); robotChanged(); };

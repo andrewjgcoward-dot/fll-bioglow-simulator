@@ -25,9 +25,12 @@ export function drawRobot(g, cfg, angles, opts = {}) {
   el('rect', { x: -w / 2, y: -front, width: w, height: l, rx: 16, fill: '#F5C518', stroke: opts.stroke || '#1A1A1A', 'stroke-width': 4 }, g);
   el('rect', { x: -w / 4, y: bodyMid - l * 0.18, width: w / 2, height: l * 0.36, rx: 8, fill: '#fff', stroke: '#1A1A1A', 'stroke-width': 4 }, g);
   el('rect', { x: -w * 0.3, y: -front - 4, width: w * 0.6, height: 14, rx: 4, fill: '#1A1A1A' }, g);
-  const wh = Math.max(30, cfg.wheel);
-  el('rect', { x: -w / 2 - 10, y: -wh / 2, width: 20, height: wh, rx: 4, fill: '#1A1A1A' }, g);
-  el('rect', { x: w / 2 - 10, y: -wh / 2, width: 20, height: wh, rx: 4, fill: '#1A1A1A' }, g);
+  // Wheels sit at the wheel spacing (track), centered on the axle; drag them in the editor.
+  const wh = Math.max(30, cfg.wheel), tx = cfg.track / 2;
+  for (const side of [-1, 1]) {
+    const wg = el('g', { 'data-part': side < 0 ? 'wheel-l' : 'wheel-r', class: ed ? 'drag' : '' }, g);
+    el('rect', { x: side * tx - 10, y: -wh / 2, width: 20, height: wh, rx: 4, fill: '#1A1A1A', stroke: sel('wheel') ? '#8FE3B0' : 'none', 'stroke-width': 5 }, wg);
+  }
   if (ed) {
     const t = el('text', { x: 0, y: -front - 18, 'text-anchor': 'middle', class: 'ed-l' }, g); t.textContent = 'FRONT';
     el('line', { x1: -w / 2 - 24, y1: 0, x2: w / 2 + 24, y2: 0, stroke: '#1A1A1A', 'stroke-width': 2, 'stroke-dasharray': '6 6' }, g);

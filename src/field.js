@@ -6,29 +6,36 @@ export const FW = 2000;
 export const FH = 1143;
 export const HOME_R = 484;
 
-// r = rotation in degrees, clockwise.
+// r = rotation in degrees, clockwise. key identifies a model for its mission mechanism.
+// M01 is a launcher along the bottom wall: a red base, a track to the pilot's turntable, the drone
+// riding on it, and a separate LiDAR map beside the survey area (see the Field Setup Reference Guide).
 export const MODELS = [
-  { n: '01', name: 'M01 Drone Survey', x: 1055, y: 220, w: 85, h: 80, r: 30 },
-  { n: '02', name: 'M02 Exploding Seeds', x: 630, y: 540, w: 70, h: 60, r: 20 },
-  { n: '03', name: 'M03 Flip the Rock', x: 80, y: 658, w: 125, h: 50, r: 0 },
-  { n: '04', name: 'M04 Lucky Leaves', x: 116, y: 1020, w: 145, h: 130, r: 0 },
-  { n: '05', name: 'M05 Reaching Roots', x: 402, y: 1090, w: 40, h: 60, r: 0 },
-  { n: '08 09', name: 'M08 Tangled / M09 Research Platform', x: 578, y: 1068, w: 159, h: 103, r: 0 },
-  { n: '10', name: 'M10 Fragile Microhabitats', x: 749, y: 1048, w: 45, h: 45, r: 0 },
-  { n: '10', name: 'M10 Fragile Microhabitats', x: 1040, y: 720, w: 45, h: 35, r: 0 },
-  { n: '06 07', name: 'M06 Leafcutter Frenzy / M07 Humongous Fungus', x: 1542, y: 1072, w: 159, h: 120, r: 0 },
-  { n: '11', name: 'M11 Window to the Past', x: 1406, y: 594, w: 80, h: 80, r: 45 },
-  { n: '12', name: 'M12 Forest Elder', x: 1940, y: 758, w: 73, h: 73, r: 0, round: true },
-  { n: '12', name: 'M12 Forest Elder post', x: 1940, y: 538, w: 25, h: 45, r: 0 },
-  { n: '', name: 'model at F1', x: 1149, y: 56, w: 72, h: 72, r: 0, round: true }
+  { key: 'm01base', n: '01', name: 'M01 drone launcher base', x: 650, y: 45, w: 40, h: 50, r: 0 },
+  { key: 'm01track', n: '', name: 'M01 drone track', x: 900, y: 45, w: 460, h: 30, r: 0 },
+  { key: 'm01drone', n: '', name: 'M01 drone', x: 886, y: 60, w: 50, h: 50, r: 0, round: true },
+  { key: 'm01pilot', n: '01', name: 'M01 pilot', x: 1149, y: 56, w: 72, h: 72, r: 0, round: true },
+  { key: 'm01map', n: '01', name: 'M01 LiDAR map', x: 1055, y: 220, w: 85, h: 80, r: 30 },
+  { key: 'm02', n: '02', name: 'M02 Exploding Seeds', x: 630, y: 540, w: 70, h: 60, r: 20 },
+  { key: 'm03', n: '03', name: 'M03 Flip the Rock', x: 80, y: 658, w: 125, h: 50, r: 0 },
+  { key: 'm04', n: '04', name: 'M04 Lucky Leaves', x: 116, y: 1020, w: 145, h: 130, r: 0 },
+  { key: 'm05', n: '05', name: 'M05 Reaching Roots', x: 402, y: 1090, w: 40, h: 60, r: 0 },
+  { key: 'm0809', n: '08 09', name: 'M08 Tangled / M09 Research Platform', x: 578, y: 1068, w: 159, h: 103, r: 0 },
+  { key: 'm10spider', n: '10', name: 'M10 spider habitat', x: 749, y: 1048, w: 45, h: 45, r: 0 },
+  { key: 'm10snail', n: '10', name: 'M10 snail habitat', x: 1040, y: 720, w: 45, h: 35, r: 0 },
+  { key: 'm0607', n: '06 07', name: 'M06 Leafcutter Frenzy / M07 Humongous Fungus', x: 1542, y: 1072, w: 159, h: 120, r: 0 },
+  { key: 'm11', n: '11', name: 'M11 Window to the Past', x: 1406, y: 594, w: 80, h: 80, r: 45 },
+  { key: 'm12', n: '12', name: 'M12 Forest Elder', x: 1940, y: 758, w: 73, h: 73, r: 0, round: true },
+  { key: 'm12post', n: '12', name: 'M12 Forest Elder post', x: 1940, y: 538, w: 25, h: 45, r: 0 }
 ];
 
-// Interchangeable docks for missions 13-15.
+// Interchangeable docks for missions 13-15. Which dock is which comes from the mat art and the
+// setup guide photos (the mine dock is in the top-right corner); teams choose which model goes where.
 export const DOCKS = [
-  { name: 'dock 1', x: 998, y: 627, w: 91, h: 139, r: 0 },
-  { name: 'dock 2', x: 1880, y: 1030, w: 120, h: 80, r: -40 },
-  { name: 'dock 3', x: 1282, y: 91, w: 85, h: 131, r: 0 }
+  { key: 'mine', name: 'mine dock', x: 1880, y: 1030, w: 120, h: 80, r: -40 },
+  { key: 'farm', name: 'farm dock', x: 998, y: 627, w: 91, h: 139, r: 0 },
+  { key: 'city', name: 'city dock', x: 1282, y: 91, w: 85, h: 131, r: 0 }
 ];
+export const DEFAULT_DOCKS = { mine: 'M13', farm: 'M15', city: 'M14' };
 
 // Black lines printed on the mat (polylines), about 20 mm wide.
 export const LINES = [
@@ -42,7 +49,7 @@ export const MISSIONS = [
   { id: 'M01', name: 'Drone Survey', items: [{ k: 'm01a', label: 'Drone no longer touching the mat', pts: 20 }, { k: 'm01b', label: 'Bonus: LiDAR map flipped, scan marker in survey area', pts: 10, req: 'm01a' }] },
   { id: 'M02', name: 'Exploding Seeds', items: [{ k: 'm02', label: 'Seeds no longer touching the stalk (each)', pts: 10, count: true }] },
   { id: 'M03', name: 'Flip the Rock', items: [{ k: 'm03a', label: 'Research flag is down', pts: 20 }, { k: 'm03b', label: 'Bonus: rock back in its starting position', pts: 10, req: 'm03a' }] },
-  { id: 'M04', name: 'Lucky Leaves', items: [{ k: 'm04a', label: 'One leaf removed, not touching the nest', pts: 10 }, { k: 'm04b', label: 'Bonus: second leaf removed, katydid in its starting position', pts: 20, req: 'm04a' }, { k: 'm04x', label: 'Katydid outside the leaf habitat (mission scores 0)', pts: 0, zero: true }] },
+  { id: 'M04', name: 'Lucky Leaves', items: [{ k: 'm04a', label: 'One leaf removed, not touching the nest', pts: 10 }, { k: 'm04b', label: 'Bonus: second leaf removed, katydid in its starting position', pts: 20, req: 'm04a' }, { k: 'm04x', label: 'Katydid completely outside the leaf habitat (mission scores 0)', pts: 0, zero: true }] },
   { id: 'M05', name: 'Reaching Roots', items: [{ k: 'm05a', label: 'Plant root partially extended', pts: 10, group: 'm05' }, { k: 'm05b', label: 'Plant root completely extended', pts: 20, group: 'm05' }] },
   { id: 'M06', name: 'Leafcutter Frenzy', items: [{ k: 'm06', label: 'Ant touching the nest, leaf fragments inside (each)', pts: 10, count: true }] },
   { id: 'M07', name: 'Humongous Fungus', items: [{ k: 'm07a', label: 'Mycelium completely extended', pts: 20 }, { k: 'm07b', label: 'Bonus: connection with the opposing team’s extended root', pts: 10, req: 'm07a' }] },
@@ -75,3 +82,31 @@ export function totalScore(score, tokens, inspection) {
   for (const m of MISSIONS) t += missionPoints(m, score);
   return t + TOKEN_PTS[tokens] + (inspection ? 20 : 0);
 }
+
+// Simplified mission mechanisms. The real models have levers, hinges and gears; here a model reacts
+// to how the robot touches it:
+//   push  = the robot (or a sweep arm) drives into it
+//   press = a lift arm comes down on it
+//   touch = any contact (for models that must not be disturbed)
+// "sets" are score sheet items the action completes. "hold" needs that many seconds of pushing.
+export const MECHANISMS = [
+  { model: 'm01pilot', how: 'push', sets: ['m01a'], says: 'M01: the pilot launched the drone.', lifts: 'm01drone' },
+  { model: 'm01map', how: 'press', sets: ['m01b'], says: 'M01: the LiDAR map flipped over.' },
+  { model: 'm02', how: 'push', seeds: 3, says: 'M02: the seeds popped off the stalk.' },
+  { model: 'm03', how: 'push', sets: ['m03a'], says: 'M03: the research flag is down.' },
+  { model: 'm04', how: 'press', sets: ['m04a'], says: 'M04: a leaf came off the nest.' },
+  { model: 'm05', how: 'push', sets: ['m05a'], says: 'M05: the plant root is partly extended.' },
+  { model: 'm05', how: 'push', hold: 1, sets: ['m05b'], clears: ['m05a'], says: 'M05: the plant root is completely extended.' },
+  { model: 'm0607', how: 'push', sets: ['m07a'], says: 'M07: the mycelium is extended.' },
+  { model: 'm0809', how: 'press', sets: ['m08'], says: 'M08: the vine is down on the mat.' },
+  { model: 'm0809', how: 'push', sets: ['m09a'], says: 'M09: the research platform is raised.' },
+  { model: 'm10spider', how: 'touch', clears: ['m10a'], says: 'M10: the spider habitat was disturbed.' },
+  { model: 'm10snail', how: 'touch', clears: ['m10b'], says: 'M10: the snail habitat was disturbed.' },
+  { model: 'm11', how: 'push', sets: ['m11'], says: 'M11: the root cover is down.' },
+  { model: 'm12', how: 'press', sets: ['m12a'], says: 'M12: the cane is raised.' },
+  { dock: 'M15', how: 'press', sets: ['m15a'], says: 'M15: the nesting canopy is raised.' },
+  { dock: 'M15', how: 'push', sets: ['m15c'], says: 'M15: the compost hatch is open.' }
+];
+// Score items the simulation can fill in. M10 starts complete and is lost when touched;
+// M02, M13 and M14 are counted from where seeds and the keystone species end up.
+export const AUTO_KEYS = ['m01a', 'm01b', 'm02', 'm03a', 'm04a', 'm05a', 'm05b', 'm07a', 'm08', 'm09a', 'm10a', 'm10b', 'm11', 'm12a', 'm13', 'm14a', 'm15a', 'm15c'];
