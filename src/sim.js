@@ -12,8 +12,14 @@ export const DEFAULT_CONFIG = {
   colorOff: 70,     // color sensor distance ahead of the robot's center, mm
   pair: 'AB', colorPort: 'C', distPort: 'D',
   yawCW: true,      // yaw grows when turning clockwise
-  collide: true
+  collide: true,    // models and pieces are solid (off = drive through everything)
+  shove: false      // the robot can push fixed mission models too (not like the real field)
 };
+
+// Loose pieces start here; teams can drag them anywhere and add more.
+export const LOOSE_DEFAULTS = [
+  { id: 'keystone', n: 'K', name: 'Keystone species (your build)', x: 400, y: 110, w: 64, h: 64, r: 0, loose: true }
+];
 
 const DRIVE_S = { forward: 0, back: 0, clockwise: 100, counterclockwise: -100 };
 const STEP = 0.004;
@@ -39,6 +45,27 @@ export function overlap(A, B) {
     if (a1 < b0 || b1 < a0) return false;
   }
   return true;
+}
+
+// Minimum translation to separate B from A: { depth, axis } with axis pointing from A toward B, or null.
+export function mtv(A, B) {
+  const ca = corners(A), cb = corners(B); const aa = axes(A.r), ab = axes(B.r);
+  let best = null;
+  for (const ax of [aa.f, aa.r, ab.f, ab.r]) {
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const p of ca) { const d = p[0] * ax[0] + p[1] * ax[1]; a0 = Math.min(a0, d); a1 = Math.max(a1, d); }
+    for (const p of cb) { const d = p[0] * ax[0] + p[1] * ax[1]; b0 = Math.min(b0, d); b1 = Math.max(b1, d); }
+    const o = Math.min(a1, b1) - Math.max(a0, b0);
+    if (o <= 0) return null;
+    if (!best || o < best.depth) best = { depth: o, axis: ax };
+  }
+  if ((B.x - A.x) * best.axis[0] + (B.y - A.y) * best.axis[1] < 0) best.axis = [-best.axis[0], -best.axis[1]];
+  return best;
+}
+
+export function inside(p, b) {
+  const { f, r } = axes(b.r); const dx = p[0] - b.x, dy = p[1] - b.y;
+  return Math.abs(dx * r[0] + dy * r[1]) <= b.w / 2 && Math.abs(dx * f[0] + dy * f[1]) <= b.h / 2;
 }
 
 function rayBox(o, d, b) {
@@ -73,9 +100,11 @@ export function matColor(pt) {
 }
 
 export class Sim {
-  constructor(config, start) {
+  // pieces: layout of loose pieces (shared with the caller so drags persist across resets).
+  constructor(config, start, pieces) {
     this.cfg = Object.assign({}, DEFAULT_CONFIG, config);
     this.start = Object.assign({ x: 240, y: 240, h: 0 }, start);
+    this.pieces = pieces || [];
     this.logLines = [];
     this.onLog = null;
     this.matchOn = false;
@@ -95,8 +124,24 @@ export class Sim {
     return Math.floor(left / 60) + ':' + String(Math.floor(left % 60)).padStart(2, '0');
   }
 
+  // Field objects for this run: fixed models, docks, then loose pieces.
+  resetObjects() {
+    this.objects = MODELS.map(m => Object.assign({}, m))
+      .concat(DOCKS.map(d => Object.assign({ dock: true }, d)))
+      .concat(this.pieces.map(p => Object.assign({}, p, { loose: true })));
+  }
+
+  // Put the robot at the start position without touching the rest of the field.
+  placeRobot() {
+    const s = this.start;
+    this.pose = { x: s.x, y: s.y, h: s.h };
+    this.yawZero = s.h; this.trail = []; this.trailT = 0; this.hit = null;
+    this.sens = this.readSensors(this.pose);
+  }
+
   reset() {
     const s = this.start;
+    this.resetObjects();
     this.pose = { x: s.x, y: s.y, h: s.h };
     this.yawZero = s.h;
     this.prog = []; this.pc = 0; this.cur = null; this.running = false; this.drive = null;
@@ -113,13 +158,51 @@ export class Sim {
 
   robotBox(p) { return { x: p.x, y: p.y, w: this.cfg.robotW, h: this.cfg.robotL, r: p.h }; }
 
+  pushable(o) { return o.loose || (this.cfg.shove && !o.dock); }
+
+  // A pushed object may not leave the mat or overlap a fixed model or another piece.
+  // Docks are low platforms, so pieces can slide onto them.
+  objectBlocked(o) {
+    for (const q of corners(o)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return true;
+    for (const other of this.objects) if (other !== o && !other.dock && overlap(o, other)) return true;
+    return false;
+  }
+
+  // Try to move the robot to pose p, pushing loose objects out of the way.
+  // Returns the name of what blocked it, or null (and the pushes are kept).
+  tryMove(p) {
+    const box = this.robotBox(p);
+    for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
+    if (!this.cfg.collide) return null;
+    const moved = [];
+    const undo = () => { for (const [o, s] of moved) Object.assign(o, s); };
+    for (const o of this.objects) {
+      const m = mtv(box, o); if (!m) continue;
+      if (!this.pushable(o)) { undo(); return o.name; }
+      const saved = { x: o.x, y: o.y, r: o.r };
+      const push = m.depth + 0.5;
+      // Where the robot touches the object (before the push), for turning it when pushed off-center.
+      const pts = corners(box).filter(q => inside(q, o)).concat(corners(o).filter(q => inside(q, box)));
+      o.x += m.axis[0] * push; o.y += m.axis[1] * push;
+      if (pts.length) {
+        const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length - saved.x, cy = pts.reduce((s, q) => s + q[1], 0) / pts.length - saved.y;
+        const cross = cx * m.axis[1] * push - cy * m.axis[0] * push;
+        const r2 = (o.w * o.w + o.h * o.h) / 4;
+        o.r -= (cross / r2) * 0.6 * 180 / Math.PI;
+      }
+      if (this.objectBlocked(o)) {
+        o.r = saved.r;
+        if (this.objectBlocked(o)) { Object.assign(o, saved); undo(); return o.name; }
+      }
+      moved.push([o, saved]);
+    }
+    return null;
+  }
+
   collides(p) {
     const box = this.robotBox(p);
     for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
-    if (this.cfg.collide) {
-      for (const m of MODELS) if (overlap(box, m)) return m.name;
-      for (const d of DOCKS) if (overlap(box, d)) return d.name;
-    }
+    if (this.cfg.collide) for (const o of this.objects) if (overlap(box, o)) return o.name;
     return null;
   }
 
@@ -136,7 +219,7 @@ export class Sim {
     if (f[0] < -1e-9) t = Math.min(t, -o[0] / f[0]);
     if (f[1] > 1e-9) t = Math.min(t, (FH - o[1]) / f[1]);
     if (f[1] < -1e-9) t = Math.min(t, -o[1] / f[1]);
-    for (const b of MODELS.concat(DOCKS)) { const h = rayBox(o, f, b); if (h !== null) t = Math.min(t, h); }
+    for (const b of this.objects || []) { const h = rayBox(o, f, b); if (h !== null) t = Math.min(t, h); }
     let yaw = p.h - (this.yawZero === undefined ? p.h : this.yawZero);
     yaw = ((yaw % 360) + 540) % 360 - 180;
     if (!c.yawCW) yaw = -yaw;
@@ -156,11 +239,14 @@ export class Sim {
     return true;
   }
 
-  // Launch a program. In a match the robot relaunches from where it is (it must be in home).
+  // Launch a program. Outside a match every run starts on a fresh field.
+  // In a match the field stays as it is and the robot relaunches from home.
   run(program) {
-    if (this.matchOn && !this.inHome()) { this.log('Relaunch from home: robot moved back to the start position.'); this.reset(); }
-    else if (!this.matchOn) this.reset();
-    else { this.cur = null; this.drive = null; this.yawZero = this.pose.h; }
+    if (!this.matchOn) this.reset();
+    else {
+      if (!this.inHome()) { this.log('Relaunch from home: robot moved back to the start position.'); this.placeRobot(); }
+      this.cur = null; this.drive = null; this.yawZero = this.pose.h;
+    }
     this.prog = program.map(b => Object.assign({}, b));
     this.pc = 0; this.match = matchBlocks(this.prog); this.loops = {};
     this.speedPct = 50; this.pair = this.cfg.pair;
@@ -277,7 +363,7 @@ export class Sim {
       const vL = L * k, vR = R * k, v = (vL + vR) / 2, w = (vL - vR) / cfg.track;
       const h0 = rad(this.pose.h), h1 = h0 + w * dt, hm = (h0 + h1) / 2;
       const np = { x: this.pose.x + v * Math.sin(hm) * dt, y: this.pose.y + v * Math.cos(hm) * dt, h: h1 * 180 / Math.PI };
-      const hit = this.collides(np);
+      const hit = this.tryMove(np);
       if (hit) { stalled = true; if (this.hit !== hit) this.log('Bumped into ' + hit + '.'); this.hit = hit; }
       else { this.pose = np; fast = Math.abs(sp) * dt; this.hit = null; }
       this.trailT += dt;

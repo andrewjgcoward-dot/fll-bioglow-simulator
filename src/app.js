@@ -1,6 +1,6 @@
-import { FW, FH, HOME_R, MODELS, DOCKS, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore } from './field.js';
+import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore } from './field.js';
 import { PORTS, PAIRS, CATEGORIES, BLOCK_CAT, OPENERS, PALETTE, blockParts, newBlock } from './blocks.js';
-import { Sim, DEFAULT_CONFIG } from './sim.js';
+import { Sim, DEFAULT_CONFIG, LOOSE_DEFAULTS, inside } from './sim.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 
 const SWATCH = { black: '#111111', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
@@ -28,19 +28,20 @@ const state = {
   program: Array.isArray(saved.program) ? saved.program.map(b => newBlock(b.t, b)) : demoProgram(),
   cfg: Object.assign({}, DEFAULT_CONFIG, saved.cfg),
   start: Object.assign({ x: 240, y: 240, h: 0 }, saved.start),
+  pieces: Array.isArray(saved.pieces) ? saved.pieces : structuredClone(LOOSE_DEFAULTS),
   score: saved.score || {}, tokens: saved.tokens ?? 6, inspection: !!saved.inspection,
   grid: saved.grid ?? true, scale: 1
 };
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
-      program: state.program.map(({ id, ...b }) => b), cfg: state.cfg, start: state.start,
+      program: state.program.map(({ id, ...b }) => b), cfg: state.cfg, start: state.start, pieces: state.pieces,
       score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid
     }));
   } catch { /* storage unavailable: keep working without it */ }
 }
 
-const sim = new Sim(state.cfg, state.start);
+const sim = new Sim(state.cfg, state.start, state.pieces);
 sim.cfg = state.cfg; // share the object so Robot tab edits apply immediately
 sim.onLog = () => renderLog();
 sim.log('Ready. Press Run to try the program.');
@@ -64,20 +65,7 @@ function buildField() {
   'ABCDEFGHIJ'.split('').forEach((c, i) => { const t = svgEl('text', { x: i * 200 + 100, y: FH - 14, 'text-anchor': 'middle', class: 'gl' }, refs.grid); t.textContent = c; });
   for (let r = 1; r <= 6; r++) { const t = svgEl('text', { x: 18, y: Y(r === 6 ? 1071 : r * 200 - 100) + 8, 'text-anchor': 'middle', class: 'gl' }, refs.grid); t.textContent = r; }
   for (const L of LINES) svgEl('polyline', { points: L.map(([x, y]) => `${x},${Y(y)}`).join(' '), fill: 'none', stroke: '#0A0A0A', 'stroke-width': 20, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, field);
-  for (const d of DOCKS) {
-    const g = svgEl('g', { transform: `translate(${d.x} ${Y(d.y)}) rotate(${d.r})` }, field);
-    svgEl('rect', { x: -d.w / 2, y: -d.h / 2, width: d.w, height: d.h, rx: 8, fill: 'rgba(242,196,138,.18)', stroke: '#F2C48A', 'stroke-width': 4, 'stroke-dasharray': '12 8' }, g);
-    const t = svgEl('text', { 'text-anchor': 'middle', y: 8, class: 'dock-l', transform: `rotate(${-d.r})` }, g); t.textContent = '13–15';
-  }
-  for (const m of MODELS) {
-    const g = svgEl('g', { transform: `translate(${m.x} ${Y(m.y)}) rotate(${m.r})` }, field);
-    const shape = m.round
-      ? svgEl('ellipse', { rx: m.w / 2, ry: m.h / 2 }, g)
-      : svgEl('rect', { x: -m.w / 2, y: -m.h / 2, width: m.w, height: m.h, rx: 6 }, g);
-    shape.setAttribute('fill', '#E9DDBF'); shape.setAttribute('stroke', '#3B2F1E'); shape.setAttribute('stroke-width', 4);
-    svgEl('title', {}, g).textContent = m.name;
-    if (m.n) { const t = svgEl('text', { 'text-anchor': 'middle', y: 9, class: 'model-l', transform: `rotate(${-m.r})` }, g); t.textContent = m.n; }
-  }
+  refs.objs = svgEl('g', {}, field); refs.objEls = [];
   refs.trail = svgEl('polyline', { fill: 'none', stroke: '#8FE3B0', 'stroke-width': 6, 'stroke-opacity': .7, 'stroke-dasharray': '2 10', 'stroke-linecap': 'round', 'pointer-events': 'none' }, field);
   refs.beam = svgEl('line', { stroke: 'rgba(143,227,176,.6)', 'stroke-width': 4, 'pointer-events': 'none' }, field);
   refs.robot = svgEl('g', { 'pointer-events': 'none' }, field);
@@ -88,7 +76,37 @@ function buildField() {
   refs.bumper = svgEl('rect', { rx: 4, fill: '#1A1A1A' }, refs.robot);
   refs.sensor = svgEl('circle', { r: 12, stroke: '#1A1A1A', 'stroke-width': 4 }, refs.robot);
   const style = svgEl('style', {}, field);
-  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A}';
+  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747}';
+}
+
+// Mission models, docks and loose pieces come from the simulation, since they can move.
+function drawObject(o) {
+  const g = svgEl('g', {});
+  if (o.dock) {
+    svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 8, fill: 'rgba(242,196,138,.18)', stroke: '#F2C48A', 'stroke-width': 4, 'stroke-dasharray': '12 8' }, g);
+    g.label = svgEl('text', { 'text-anchor': 'middle', y: 8, class: 'dock-l' }, g); g.label.textContent = '13–15';
+    return g;
+  }
+  const shape = o.round ? svgEl('ellipse', { rx: o.w / 2, ry: o.h / 2 }, g) : svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 6 }, g);
+  shape.setAttribute('fill', o.loose ? '#C9A3FF' : '#E9DDBF');
+  shape.setAttribute('stroke', o.loose ? '#2A1747' : '#3B2F1E'); shape.setAttribute('stroke-width', 4);
+  if (o.loose) g.setAttribute('class', 'piece');
+  svgEl('title', {}, g).textContent = o.name + (o.loose ? ' (drag to move)' : '');
+  if (o.n) { g.label = svgEl('text', { 'text-anchor': 'middle', y: 9, class: o.loose ? 'piece-l' : 'model-l' }, g); g.label.textContent = o.n; }
+  return g;
+}
+
+function syncObjects() {
+  const objs = sim.objects;
+  if (refs.objEls.length !== objs.length || refs.objEls.some((g, i) => g.obj !== objs[i])) {
+    refs.objs.innerHTML = '';
+    refs.objEls = objs.map(o => { const g = drawObject(o); g.obj = o; refs.objs.appendChild(g); return g; });
+  }
+  for (const g of refs.objEls) {
+    const o = g.obj;
+    g.setAttribute('transform', `translate(${o.x.toFixed(1)} ${Y(o.y).toFixed(1)}) rotate(${o.r.toFixed(1)})`);
+    if (g.label) g.label.setAttribute('transform', `rotate(${(-o.r).toFixed(1)})`);
+  }
 }
 
 function layoutRobot() {
@@ -104,6 +122,7 @@ function layoutRobot() {
 
 function drawField() {
   const p = sim.pose, s = sim.sens;
+  syncObjects();
   refs.robot.setAttribute('transform', `translate(${p.x} ${Y(p.y)}) rotate(${p.h})`);
   refs.body.setAttribute('filter', '');
   refs.body.setAttribute('stroke', sim.hit ? '#F2A6A0' : sim.running ? '#8FE3B0' : '#1A1A1A');
@@ -133,12 +152,24 @@ function drawField() {
 
 function renderLog() { $('log').innerHTML = sim.logLines.map(l => `<div>${esc(l)}</div>`).join(''); }
 
-function renderStart() { $('sx').value = +(state.start.x / 10).toFixed(1); $('sy').value = +(state.start.y / 10).toFixed(1); $('sh').value = state.start.h; }
+function renderStart() {
+  $('sx').value = +(state.start.x / 10).toFixed(1); $('sy').value = +(state.start.y / 10).toFixed(1); $('sh').value = state.start.h;
+  const left = state.start.x < FW / 2;
+  document.querySelectorAll('#side button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.side === 'left') === left)));
+}
 
 function setStart(patch) {
   Object.assign(state.start, patch); sim.start = state.start; save(); renderStart();
-  if (!sim.running) { sim.reset(); drawField(); }
+  if (!sim.running) { sim.placeRobot(); drawField(); }
 }
+
+// Mirror the start position onto the other half of the table (same spot in the other home).
+const normDeg = (d) => { d = ((d % 360) + 360) % 360; return d > 180 ? d - 360 : d; };
+$('side').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-side]'); if (!b || sim.running) return;
+  const left = state.start.x < FW / 2;
+  if ((b.dataset.side === 'left') !== left) setStart({ x: FW - state.start.x, h: normDeg(-state.start.h) });
+});
 
 // ---------- code tab ----------
 
@@ -257,9 +288,10 @@ function renderRobot() {
       <label>Distance sensor port${sel('distPort', PORTS)}</label>
     </div>
     <label class="check"><input type="checkbox" data-cfgbool="yawCW"${c.yawCW ? ' checked' : ''}>Yaw angle increases when turning clockwise</label>
-    <label class="check"><input type="checkbox" data-cfgbool="collide"${c.collide ? ' checked' : ''}>Mission models block the robot</label>
+    <label class="check"><input type="checkbox" data-cfgbool="collide"${c.collide ? ' checked' : ''}>Models and pieces are solid (off: drive through everything)</label>
+    <label class="check"><input type="checkbox" data-cfgbool="shove"${c.shove ? ' checked' : ''}>Robot can shove fixed mission models (just for fun; real ones are held down)</label>
     <label class="check"><input type="checkbox" data-grid${state.grid ? ' checked' : ''}>Show the 20 cm wireframe grid</label>
-    <div class="fine">Importing a SPIKE file sets the drive motors and sensor ports from its blocks. Mission models are fixed obstacles for now: the robot stops against them but can't push, lift or flip them yet. Model positions are traced from the wireframe and are approximate.</div>`;
+    <div class="fine">Importing a SPIKE file sets the drive motors and sensor ports from its blocks. Mission models are held in place like the real Dual Lock; loose pieces (purple) slide and turn when the robot pushes them. Lifting and mission mechanisms aren't simulated yet. Model positions are traced from the wireframe and are approximate.</div>`;
 }
 $('tab-robot').addEventListener('change', (e) => {
   const t = e.target;
@@ -295,13 +327,47 @@ $('scales').addEventListener('click', (e) => {
 $('sx').onchange = (e) => { const v = parseFloat(e.target.value); if (isFinite(v)) setStart({ x: Math.max(0, Math.min(FW, v * 10)) }); };
 $('sy').onchange = (e) => { const v = parseFloat(e.target.value); if (isFinite(v)) setStart({ y: Math.max(0, Math.min(FH, v * 10)) }); };
 $('sh').onchange = (e) => { const v = parseFloat(e.target.value); if (isFinite(v)) setStart({ h: v }); };
-$('home-left').onclick = () => setStart({ x: 240, y: 240, h: 0 });
-$('home-right').onclick = () => setStart({ x: 1760, y: 240, h: 0 });
-field.addEventListener('click', (e) => {
+const toMm = (e) => { const r = field.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * FW, (1 - (e.clientY - r.top) / r.height) * FH]; };
+
+// Drag loose pieces (any time the robot isn't running); a plain click places the robot.
+let drag = null, dragged = false;
+field.addEventListener('pointerdown', (e) => {
   if (sim.running) return;
-  const r = field.getBoundingClientRect();
-  setStart({ x: Math.round((e.clientX - r.left) / r.width * FW), y: Math.round((1 - (e.clientY - r.top) / r.height) * FH) });
+  const pt = toMm(e);
+  const o = sim.objects.slice().reverse().find(o => o.loose && inside(pt, o));
+  if (!o) return;
+  drag = { o, dx: o.x - pt[0], dy: o.y - pt[1] }; dragged = true; // a tap on a piece never moves the robot
+  try { field.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+  e.preventDefault();
 });
+field.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const pt = toMm(e); const o = drag.o;
+  o.x = Math.max(o.w / 2, Math.min(FW - o.w / 2, pt[0] + drag.dx));
+  o.y = Math.max(o.h / 2, Math.min(FH - o.h / 2, pt[1] + drag.dy));
+  const lp = state.pieces.find(p => p.id === o.id); if (lp) { lp.x = Math.round(o.x); lp.y = Math.round(o.y); lp.r = Math.round(o.r); }
+  dragged = true; drawField();
+});
+const endDrag = () => { if (!drag) return; drag = null; save(); sim.sens = sim.readSensors(sim.pose); drawField(); };
+field.addEventListener('pointerup', endDrag);
+field.addEventListener('pointercancel', endDrag);
+field.addEventListener('click', (e) => {
+  if (dragged) { dragged = false; return; }
+  if (sim.running) return;
+  const [x, y] = toMm(e);
+  setStart({ x: Math.round(x), y: Math.round(y) });
+});
+
+$('add-piece').onclick = () => {
+  const k = state.pieces.length;
+  const p = { id: 'p' + Date.now().toString(36), n: String(k), name: 'Loose piece ' + k, x: 820 + (k % 5) * 80, y: 900, w: 50, h: 50, r: 0 };
+  state.pieces.push(p); sim.objects.push(Object.assign({}, p, { loose: true })); save(); drawField();
+};
+$('reset-pieces').onclick = () => {
+  state.pieces = structuredClone(LOOSE_DEFAULTS); sim.pieces = state.pieces;
+  if (!sim.running) sim.resetObjects();
+  save(); drawField();
+};
 
 // ---------- import / export ----------
 

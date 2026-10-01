@@ -74,9 +74,18 @@
       <label>x (cm)<input id="sx" type="number" step="0.5"></label>
       <label>y (cm)<input id="sy" type="number" step="0.5"></label>
       <label>heading (°)<input id="sh" type="number" step="1"></label>
-      <button id="home-left" class="btn small red" type="button">Left home</button>
-      <button id="home-right" class="btn small blue" type="button">Right home</button>
+      <div class="seg side" id="side" aria-label="Start side">
+        <button type="button" data-side="left" aria-pressed="true">Left</button>
+        <button type="button" data-side="right" aria-pressed="false">Right</button>
+      </div>
       <span class="muted" id="pos"></span>
+    </div>
+
+    <div class="start">
+      <strong>Loose pieces</strong>
+      <button id="add-piece" class="btn small" type="button">Add piece</button>
+      <button id="reset-pieces" class="btn small" type="button">Reset pieces</button>
+      <span class="muted">Drag the purple pieces on the mat. The robot pushes them around.</span>
     </div>
 
     <div id="log" class="log" aria-live="polite"></div>

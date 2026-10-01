@@ -33,6 +33,56 @@ test('robot stalls against a wall instead of driving through it', () => {
   assert.ok(sim.logLines.some(l => l.includes('stalled')));
 });
 
+const piece = (x, y, extra) => Object.assign({ id: 'p', n: 'P', name: 'test piece', x, y, w: 60, h: 60, r: 0 }, extra);
+
+test('the robot pushes a loose piece ahead of it', () => {
+  const sim = new Sim({}, { x: 1600, y: 300, h: 0 }, [piece(1600, 500)]);
+  runToEnd(sim, prog([['move', { dir: 'forward', val: '30', unit: 'cm' }]]));
+  const p = sim.objects.find(o => o.loose);
+  assert.ok(Math.abs(sim.pose.y - 600) < 3, 'robot y ' + sim.pose.y);
+  assert.ok(p.y > 725 && p.y < 735, 'piece y ' + p.y);
+  assert.ok(Math.abs(p.r) < 1, 'straight push should not turn it: ' + p.r);
+});
+
+test('an off-center push turns the piece', () => {
+  const sim = new Sim({}, { x: 1560, y: 300, h: 0 }, [piece(1655, 500)]);
+  runToEnd(sim, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+  const p = sim.objects.find(o => o.loose);
+  assert.ok(p.y > 520 || p.x > 1665, 'piece should have moved: ' + p.x + ',' + p.y);
+  assert.ok(Math.abs(p.r) > 3, 'piece should have turned: ' + p.r);
+});
+
+test('a piece pinned against a fixed model stops the robot', () => {
+  // M02 sits at (630, 540); pin a piece just below it.
+  const sim = new Sim({}, { x: 630, y: 230, h: 0 }, [piece(630, 440)]);
+  runToEnd(sim, prog([['move', { dir: 'forward', val: '30', unit: 'cm' }]]));
+  const p = sim.objects.find(o => o.loose);
+  assert.ok(p.y < 480, 'piece y ' + p.y);
+  assert.ok(sim.logLines.some(l => l.includes('Bumped')));
+});
+
+test('fixed models block the robot unless shove mode is on', () => {
+  const fixed = new Sim({}, { x: 630, y: 300, h: 0 });
+  runToEnd(fixed, prog([['move', { dir: 'forward', val: '30', unit: 'cm' }]]));
+  assert.equal(fixed.objects.find(o => o.n === '02').y, 540);
+  const shove = new Sim({ shove: true }, { x: 630, y: 300, h: 0 });
+  runToEnd(shove, prog([['move', { dir: 'forward', val: '30', unit: 'cm' }]]));
+  assert.ok(shove.objects.find(o => o.n === '02').y > 560);
+});
+
+test('a fresh run puts pushed pieces back; a match keeps them', () => {
+  const layout = [piece(1600, 500)];
+  const sim = new Sim({}, { x: 1600, y: 300, h: 0 }, layout);
+  const push = prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]);
+  runToEnd(sim, push);
+  assert.ok(sim.objects.find(o => o.loose).y > 500);
+  sim.run(prog([])); assert.equal(sim.objects.find(o => o.loose).y, 500);
+  assert.equal(layout[0].y, 500, 'layout is never changed by the simulation');
+  sim.startMatch(); runToEnd(sim, push);
+  const moved = sim.objects.find(o => o.loose).y;
+  sim.run(prog([])); assert.equal(sim.objects.find(o => o.loose).y, moved);
+});
+
 test('repeat runs its body N times and if skips when false', () => {
   const sim = new Sim({}, { x: 240, y: 240, h: 0 });
   runToEnd(sim, prog([

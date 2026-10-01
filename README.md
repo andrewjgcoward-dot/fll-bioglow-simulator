@@ -7,6 +7,8 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 ## What it does
 
 - **Field:** the 2.0 m × 1.14 m BioGlow mat on the 20 cm wireframe grid, with both home areas, the black lines and every mission model.
+- **Loose pieces:** purple pieces slide and turn when the robot pushes them, and stop against walls and models. Drag them anywhere, add more, or reset them. A keystone species piece starts in left home. Mission models stay fixed, like the real Dual Lock; a "just for fun" setting lets the robot shove them too.
+- **Left / Right:** one tap moves the start position to the matching spot in the other home.
 - **Robot:** a two-wheel drive base you can configure, with a color sensor, a distance sensor, a gyro (yaw angle) and attachment motors.
 - **Blocks:** move, steer, start/stop moving, movement speed, movement motors, motor run / go to position / speed / stop, wait, wait until (color, distance, yaw), if, repeat, reset yaw, write and beep.
 - **SPIKE files:**
@@ -18,7 +20,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 
 ### Not yet
 
-- Mission models are fixed obstacles. The robot stops against them but can't push, lift or flip them.
+- Mission mechanisms (levers, lifts, flips) and lifting or carrying pieces aren't simulated. Pieces are only pushed along the mat.
 - Not simulated yet: SPIKE Python projects, variables, light-matrix images, motor-position conditions, "else" branches, and extra stacks such as "when color" hats.
 - Exported files re-import here, but opening them in the SPIKE App hasn't been confirmed yet.
 - There is no live connection to the SPIKE App. Moving programs with files works everywhere. A desktop "virtual hub" helper might be possible later.
