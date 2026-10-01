@@ -10,6 +10,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **Loose pieces:** purple pieces slide and turn when the robot pushes them, and stop against walls and models. Drag them anywhere, add more, or reset them. A keystone species piece starts in left home. Mission models stay fixed, like the real Dual Lock; a "just for fun" setting lets the robot shove them too.
 - **Left / Right:** one tap moves the start position to the matching spot in the other home.
 - **Robot:** a two-wheel drive base you can configure, with a color sensor, a distance sensor, a gyro (yaw angle) and attachment motors.
+- **Robot editor:** drag the color sensor, distance sensor and arms onto a top view of the robot. Each arm is a **lift/press** arm (tilts up and down) or a **sweep** arm (swings flat), points front, back, left or right, and has a length and gear ratio. Lowered and sweeping arms push loose pieces; arms stop when they press on a model or the mat, like SPIKE stall detection.
 - **Blocks:** move, steer, start/stop moving, movement speed, movement motors, motor run / go to position / speed / stop, wait, wait until (color, distance, yaw), if, repeat, reset yaw, write and beep.
 - **SPIKE files:**
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
@@ -20,7 +21,8 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 
 ### Not yet
 
-- Mission mechanisms (levers, lifts, flips) and lifting or carrying pieces aren't simulated. Pieces are only pushed along the mat.
+- Mission mechanisms (levers, lifts, flips) don't react yet: an arm can press on a model, but the model doesn't change. Arms can push pieces but not pick them up.
+- Arms are limited to straight front/back/left/right directions, with no odd angles, linkages or multi-joint arms.
 - Not simulated yet: SPIKE Python projects, variables, light-matrix images, motor-position conditions, "else" branches, and extra stacks such as "when color" hats.
 - Exported files re-import here, but opening them in the SPIKE App hasn't been confirmed yet.
 - There is no live connection to the SPIKE App. Moving programs with files works everywhere. A desktop "virtual hub" helper might be possible later.

@@ -4,18 +4,47 @@
 import { FW, FH, HOME_R, MODELS, DOCKS, LINES, MATCH_SECONDS } from './field.js';
 import { matchBlocks } from './blocks.js';
 
+// Robot-local coordinates: origin at the middle of the wheel axle, x to the right, y forward (mm).
 export const DEFAULT_CONFIG = {
   wheel: 56,        // wheel diameter, mm
   track: 112,       // distance between wheels, mm
   top: 1000,        // wheel speed at 100 %, degrees per second
   robotW: 160, robotL: 200,
-  colorOff: 70,     // color sensor distance ahead of the robot's center, mm
-  colorSide: 0,     // color sensor distance right of center, mm (negative = left)
+  axleBack: 100,    // distance from the back edge of the body to the wheel axle, mm
   pair: 'AB', colorPort: 'C', distPort: 'D',
+  color: { x: 0, y: 70 },                 // color sensor, looking down
+  dist: { x: 0, y: 100, dir: 'front' },   // distance sensor and the way it faces
+  // Arms: 'sweep' turns flat over the mat; 'lift' tilts up and down (0° = flat on the mat, 90° = straight up).
+  arms: [{ id: 'a1', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'up', cw: 'lowers', ratio: 1 }],
   yawCW: true,      // yaw grows when turning clockwise
   collide: true,    // models and pieces are solid (off = drive through everything)
   shove: false      // the robot can push fixed mission models too (not like the real field)
 };
+
+export const DIR_ANGLE = { front: 0, right: 90, back: 180, left: -90 };
+const ARM_WIDTH = 16;      // mm, for collisions
+const LIFT_SOLID = 30;     // a lift arm tilted at most this far up is low enough to hit things
+
+// Fill in defaults and convert settings saved by older versions.
+export function normalizeConfig(saved) {
+  const cfg = Object.assign(structuredClone(DEFAULT_CONFIG), saved || {});
+  if (saved && (saved.colorOff !== undefined || saved.colorSide !== undefined) && !saved.color) cfg.color = { x: saved.colorSide || 0, y: saved.colorOff ?? 70 };
+  delete cfg.colorOff; delete cfg.colorSide;
+  if (saved && saved.axleBack === undefined) cfg.axleBack = cfg.robotL / 2;
+  return cfg;
+}
+
+// Where an arm points (degrees clockwise from the robot's front), how long it looks from above,
+// and whether it is low enough to touch things, for a given motor angle.
+export function armGeom(arm, motorDeg) {
+  const base = DIR_ANGLE[arm.dir] || 0, turn = motorDeg * (arm.ratio || 1);
+  if (arm.motion === 'sweep') {
+    return { ang: base + (arm.cw === 'left' ? -turn : turn), proj: arm.len, solid: true, tilt: 0, raw: 0 };
+  }
+  const raw = (arm.rest === 'down' ? 0 : 90) + (arm.cw === 'raises' ? turn : -turn);
+  const tilt = clamp(raw, 0, 90);
+  return { ang: base, proj: arm.len * Math.cos(rad(tilt)), solid: tilt <= LIFT_SOLID, tilt, raw };
+}
 
 // Loose pieces start here; teams can drag them anywhere and add more.
 export const LOOSE_DEFAULTS = [
@@ -103,7 +132,7 @@ export function matColor(pt) {
 export class Sim {
   // pieces: layout of loose pieces (shared with the caller so drags persist across resets).
   constructor(config, start, pieces) {
-    this.cfg = Object.assign({}, DEFAULT_CONFIG, config);
+    this.cfg = normalizeConfig(config);
     this.start = Object.assign({ x: 240, y: 240, h: 0 }, start);
     this.pieces = pieces || [];
     this.logLines = [];
@@ -157,7 +186,30 @@ export class Sim {
     this.sens = this.readSensors(this.pose);
   }
 
-  robotBox(p) { return { x: p.x, y: p.y, w: this.cfg.robotW, h: this.cfg.robotL, r: p.h }; }
+  // Robot-local point (x right, y forward from the axle middle) to field coordinates.
+  toWorld(p, lx, ly) { const { f, r } = axes(p.h); return [p.x + r[0] * lx + f[0] * ly, p.y + r[1] * lx + f[1] * ly]; }
+
+  bodyBox(p) {
+    const c = this.cfg; const [x, y] = this.toWorld(p, 0, c.robotL / 2 - c.axleBack);
+    return { x, y, w: c.robotW, h: c.robotL, r: p.h, part: 'robot' };
+  }
+  robotBox(p) { return this.bodyBox(p); }
+
+  // Top-view rectangle of an arm, or null when it is too short to matter.
+  // touching: only arms low enough to hit things (sweep arms always, lift arms when lowered).
+  armBox(p, arm, motorDeg, touching = true) {
+    const g = armGeom(arm, motorDeg);
+    if ((touching && !g.solid) || g.proj < 5) return null;
+    const a = rad(g.ang);
+    const [x, y] = this.toWorld(p, arm.x + Math.sin(a) * g.proj / 2, arm.y + Math.cos(a) * g.proj / 2);
+    return { x, y, w: ARM_WIDTH, h: g.proj, r: p.h + g.ang, part: 'arm ' + arm.port };
+  }
+
+  solidBoxes(p) {
+    const out = [this.bodyBox(p)];
+    for (const arm of this.cfg.arms || []) { const b = this.armBox(p, arm, this.arms[arm.port] || 0); if (b) out.push(b); }
+    return out;
+  }
 
   pushable(o) { return o.loose || (this.cfg.shove && !o.dock); }
 
@@ -169,15 +221,13 @@ export class Sim {
     return false;
   }
 
-  // Try to move the robot to pose p, pushing loose objects out of the way.
-  // Returns the name of what blocked it, or null (and the pushes are kept).
-  tryMove(p) {
-    const box = this.robotBox(p);
-    for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
+  // Push loose objects out of `boxes`. Returns the name of what blocked, or null (pushes kept).
+  pushOut(boxes) {
+    for (const box of boxes) for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
     if (!this.cfg.collide) return null;
     const moved = [];
     const undo = () => { for (const [o, s] of moved) Object.assign(o, s); };
-    for (const o of this.objects) {
+    for (const box of boxes) for (const o of this.objects) {
       const m = mtv(box, o); if (!m) continue;
       if (!this.pushable(o)) { undo(); return o.name; }
       const saved = { x: o.x, y: o.y, r: o.r };
@@ -200,22 +250,46 @@ export class Sim {
     return null;
   }
 
-  collides(p) {
-    const box = this.robotBox(p);
+  // Try to move the robot (body and lowered arms) to pose p.
+  tryMove(p) { return this.pushOut(this.solidBoxes(p)); }
+
+  // Try to turn the motor on `port` to motorDeg. Returns what stopped the arm, or null.
+  tryArm(port, motorDeg) {
+    const arm = (this.cfg.arms || []).find(a => a.port === port);
+    if (!arm) return null;
+    const g = armGeom(arm, motorDeg);
+    if (arm.motion !== 'sweep' && (g.raw < -0.01 || g.raw > 90.01)) return g.raw < 0 ? 'the mat' : 'its top stop';
+    const box = this.armBox(this.pose, arm, motorDeg);
+    if (!box) return null;
+    if (arm.motion === 'sweep') return this.pushOut([box]);
+    // A lift arm coming down presses on whatever is under it instead of shoving it aside.
     for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
-    if (this.cfg.collide) for (const o of this.objects) if (overlap(box, o)) return o.name;
+    if (this.cfg.collide) for (const o of this.objects) if (!o.dock && overlap(box, o)) return o.name;
     return null;
   }
 
+  collides(p) {
+    for (const box of this.solidBoxes(p)) {
+      for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
+      if (this.cfg.collide) for (const o of this.objects) if (overlap(box, o)) return o.name;
+    }
+    return null;
+  }
+
+  // The robot, including any arm sticking out, is completely inside one of the home areas.
   inHome(p = this.pose) {
-    return corners(this.robotBox(p)).every(q => Math.hypot(q[0], q[1]) <= HOME_R || Math.hypot(q[0] - FW, q[1]) <= HOME_R);
+    const boxes = [this.bodyBox(p)];
+    for (const arm of this.cfg.arms || []) { const b = this.armBox(p, arm, this.arms[arm.port] || 0, false); if (b) boxes.push(b); }
+    const pts = boxes.flatMap(corners);
+    const within = (cx) => pts.every(q => Math.hypot(q[0] - cx, q[1]) <= HOME_R);
+    return within(0) || within(FW);
   }
 
   readSensors(p) {
-    const c = this.cfg; const { f } = axes(p.h);
-    const { r } = axes(p.h); const side = c.colorSide || 0;
-    const sp = [p.x + f[0] * c.colorOff + r[0] * side, p.y + f[1] * c.colorOff + r[1] * side];
-    const o = [p.x + f[0] * c.robotL / 2, p.y + f[1] * c.robotL / 2];
+    const c = this.cfg;
+    const sp = this.toWorld(p, c.color.x, c.color.y);
+    const o = this.toWorld(p, c.dist.x, c.dist.y);
+    const dirAng = p.h + (DIR_ANGLE[c.dist.dir] || 0); const { f } = axes(dirAng);
     let t = Infinity;
     if (f[0] > 1e-9) t = Math.min(t, (FW - o[0]) / f[0]);
     if (f[0] < -1e-9) t = Math.min(t, -o[0] / f[0]);
@@ -225,7 +299,7 @@ export class Sim {
     let yaw = p.h - (this.yawZero === undefined ? p.h : this.yawZero);
     yaw = ((yaw % 360) + 540) % 360 - 180;
     if (!c.yawCW) yaw = -yaw;
-    return { color: matColor(sp), spot: sp, dist: t <= 2000 ? t / 10 : null, rayLen: Math.min(t, 2000), origin: o, yaw };
+    return { color: matColor(sp), spot: sp, dist: t <= 2000 ? Math.max(0, t) / 10 : null, rayLen: Math.min(Math.max(0, t), 2000), origin: o, dirAng, yaw };
   }
 
   cond(b, s) {
@@ -389,12 +463,27 @@ export class Sim {
         else c.stall = 0;
       } else if (c.kind === 'motor') {
         const ds = Math.abs(this.motorSpeed[c.ports[0]] || 75) / 100 * cfg.top * dt;
+        const st = c.mode === 'time' ? ds : Math.min(ds, c.target - c.prog);
+        // Each motor turns unless its arm runs into something (or its end stop).
+        let blockedBy = null;
+        for (const pt of c.ports) {
+          const next = this.arms[pt] + c.sign * st;
+          const hit = this.tryArm(pt, next);
+          if (hit) blockedBy = blockedBy || [pt, hit]; else this.arms[pt] = next;
+        }
         if (!c.ports.length) c.done = true;
-        else if (c.mode === 'time') { for (const pt of c.ports) this.arms[pt] += c.sign * ds; if (c.t >= c.target) c.done = true; }
-        else {
-          const st = Math.min(ds, c.target - c.prog); c.prog += st;
-          for (const pt of c.ports) this.arms[pt] += c.sign * st;
-          if (c.prog >= c.target - 1e-6) c.done = true;
+        else if (blockedBy) {
+          // SPIKE motors stop a "run for" block when they stall.
+          c.stall = (c.stall || 0) + dt;
+          if (c.stall > 0.3) {
+            c.done = true;
+            const [pt, what] = blockedBy;
+            this.log(what === 'the mat' ? 'Arm ' + pt + ' pressed down on the mat.' : what === 'its top stop' ? 'Arm ' + pt + ' is all the way up.' : 'Arm ' + pt + ' pressed against ' + what + '.');
+          }
+        } else {
+          c.stall = 0;
+          if (c.mode === 'time') { if (c.t >= c.target) c.done = true; }
+          else { c.prog += st; if (c.prog >= c.target - 1e-6) c.done = true; }
         }
       } else if (c.kind === 'wait') { if (c.t >= c.target) c.done = true; }
       else if (c.kind === 'until') { if (this.cond(c.b, this.sens)) c.done = true; }

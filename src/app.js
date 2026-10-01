@@ -1,6 +1,7 @@
 import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore } from './field.js';
 import { PORTS, PAIRS, CATEGORIES, BLOCK_CAT, OPENERS, PALETTE, blockParts, newBlock } from './blocks.js';
-import { Sim, DEFAULT_CONFIG, LOOSE_DEFAULTS, inside } from './sim.js';
+import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside } from './sim.js';
+import { drawRobot } from './robot-view.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 
 const SWATCH = { black: '#111111', white: '#F5F5F0', red: '#D9342B', blue: '#1E6FD9', green: '#2F8F4E', yellow: '#E8C21E', none: '#5B7066', magenta: '#C2329E', azure: '#3FA9F5' };
@@ -26,7 +27,7 @@ const saved = load();
 const state = {
   tab: 'code',
   program: Array.isArray(saved.program) ? saved.program.map(b => newBlock(b.t, b)) : demoProgram(),
-  cfg: Object.assign({}, DEFAULT_CONFIG, saved.cfg),
+  cfg: normalizeConfig(saved.cfg), sel: 'color',
   start: Object.assign({ x: 240, y: 240, h: 0 }, saved.start),
   pieces: Array.isArray(saved.pieces) ? saved.pieces : structuredClone(LOOSE_DEFAULTS),
   score: saved.score || {}, tokens: saved.tokens ?? 6, inspection: !!saved.inspection,
@@ -70,23 +71,8 @@ function buildField() {
   refs.seen = svgEl('g', { 'pointer-events': 'none' }, field); refs.seenPaths = {};
   refs.beam = svgEl('line',{ stroke: 'rgba(143,227,176,.6)', 'stroke-width': 4, 'pointer-events': 'none' }, field);
   refs.robot = svgEl('g', { 'pointer-events': 'none' }, field);
-  refs.body = svgEl('rect', { rx: 16, fill: '#F5C518', stroke: '#1A1A1A', 'stroke-width': 4 }, refs.robot);
-  refs.wl = svgEl('rect', { rx: 4, fill: '#1A1A1A' }, refs.robot);
-  refs.wr = svgEl('rect', { rx: 4, fill: '#1A1A1A' }, refs.robot);
-  refs.hub = svgEl('rect', { rx: 8, fill: '#fff', stroke: '#1A1A1A', 'stroke-width': 4 }, refs.robot);
-  refs.bumper = svgEl('rect', { rx: 4, fill: '#1A1A1A' }, refs.robot);
-  refs.sensor = svgEl('circle', { r: 12, stroke: '#1A1A1A', 'stroke-width': 4 }, refs.robot);
-  // Attachment motor dials (E left, F right) so arm moves are visible on the robot.
-  refs.dials = {};
-  for (const port of ['E', 'F']) {
-    const g = svgEl('g', {}, refs.robot);
-    svgEl('circle', { r: 22, fill: '#0B62AD', stroke: '#1A1A1A', 'stroke-width': 3 }, g);
-    const needle = svgEl('line', { x1: 0, y1: 0, x2: 0, y2: -18, stroke: '#fff', 'stroke-width': 5, 'stroke-linecap': 'round' }, g);
-    const t = svgEl('text', { 'text-anchor': 'middle', y: 44, class: 'dial-l' }, g); t.textContent = port;
-    refs.dials[port] = { g, needle };
-  }
   const style = svgEl('style', {}, field);
-  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A}';
+  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A} .arm-l{font:700 20px "JetBrains Mono",monospace;fill:#fff}';
 }
 
 // Mission models, docks and loose pieces come from the simulation, since they can move.
@@ -119,28 +105,12 @@ function syncObjects() {
   }
 }
 
-function layoutRobot() {
-  const { robotW: w, robotL: l, colorOff, colorSide } = state.cfg;
-  refs.dials.E.g.setAttribute('transform', `translate(${-w * 0.25} ${l * 0.28})`);
-  refs.dials.F.g.setAttribute('transform', `translate(${w * 0.25} ${l * 0.28})`);
-  const set = (e, a) => { for (const k in a) e.setAttribute(k, a[k]); };
-  set(refs.body, { x: -w / 2, y: -l / 2, width: w, height: l });
-  set(refs.wl, { x: -w / 2 - 10, y: -l * 0.1, width: 20, height: l * 0.32 });
-  set(refs.wr, { x: w / 2 - 10, y: -l * 0.1, width: 20, height: l * 0.32 });
-  set(refs.hub, { x: -w / 4, y: -l * 0.2, width: w / 2, height: l * 0.36 });
-  set(refs.bumper, { x: -w * 0.3, y: -l / 2 - 4, width: w * 0.6, height: 14 });
-  set(refs.sensor, { cx: colorSide || 0, cy: -colorOff });
-}
-
 function drawField() {
   const p = sim.pose, s = sim.sens;
   syncObjects();
   refs.robot.setAttribute('transform', `translate(${p.x} ${Y(p.y)}) rotate(${p.h})`);
-  refs.body.setAttribute('filter', '');
-  refs.body.setAttribute('stroke', sim.hit ? '#F2A6A0' : sim.running ? '#8FE3B0' : '#1A1A1A');
-  refs.sensor.setAttribute('fill', SWATCH[s.color] || '#5B7066');
+  drawRobot(refs.robot, state.cfg, sim.arms, { stroke: sim.hit ? '#F2A6A0' : sim.running ? '#8FE3B0' : '#1A1A1A', colorFill: SWATCH[s.color] || '#5B7066' });
   refs.trail.setAttribute('points', sim.trail.map(([x, y]) => `${x.toFixed(0)},${Y(y).toFixed(0)}`).join(' '));
-  for (const port of ['E', 'F']) refs.dials[port].needle.setAttribute('transform', `rotate(${(sim.arms[port] % 360).toFixed(1)})`);
   // Dots where the color sensor saw something other than plain mat (one path per color).
   const byColor = {};
   for (const [x, y, c] of sim.seen) (byColor[c] = byColor[c] || []).push(`M${x.toFixed(0)} ${Y(y).toFixed(0)}h0`);
@@ -148,7 +118,7 @@ function drawField() {
     if (!refs.seenPaths[c]) refs.seenPaths[c] = svgEl('path', { fill: 'none', stroke: SWATCH[c] || '#999', 'stroke-width': 14, 'stroke-linecap': 'round', 'stroke-opacity': .9 }, refs.seen);
     refs.seenPaths[c].setAttribute('d', (byColor[c] || []).join(''));
   }
-  const a = p.h * Math.PI / 180, o = s.origin;
+  const a = s.dirAng * Math.PI / 180, o = s.origin;
   refs.beam.setAttribute('x1', o[0]); refs.beam.setAttribute('y1', Y(o[1]));
   refs.beam.setAttribute('x2', o[0] + Math.sin(a) * s.rayLen); refs.beam.setAttribute('y2', Y(o[1] + Math.cos(a) * s.rayLen));
   refs.grid.style.display = state.grid ? '' : 'none';
@@ -294,34 +264,143 @@ $('tab-score').addEventListener('click', (e) => {
 
 // ---------- robot tab ----------
 
-const NUM_FIELDS = [['wheel', 'Wheel diameter (mm)'], ['track', 'Wheel spacing (mm)'], ['top', 'Top wheel speed (°/s)'], ['robotW', 'Robot width (mm)'], ['robotL', 'Robot length (mm)'], ['colorOff', 'Color sensor ahead of center (mm)'], ['colorSide', 'Color sensor right of center (mm, left is −)']];
-const SIGNED = { colorOff: true, colorSide: true };
+const NUM_FIELDS = [['wheel', 'Wheel diameter (mm)'], ['track', 'Wheel spacing (mm)'], ['top', 'Top wheel speed (°/s)'], ['robotW', 'Robot width (mm)'], ['robotL', 'Robot length (mm)'], ['axleBack', 'Wheels from back edge (mm)']];
+const FACES = ['front', 'right', 'back', 'left'];
+const SNAP = 5, REACH = 260;
+const opt = (opts, cur, label = (o) => o) => opts.map(o => `<option value="${o}"${o === cur ? ' selected' : ''}>${esc(label(o))}</option>`).join('');
+
 function renderRobot() {
   const c = state.cfg;
-  const sel = (k, opts) => `<select data-cfg="${k}">${opts.map(o => `<option${o === c[k] ? ' selected' : ''}>${o}</option>`).join('')}</select>`;
   $('tab-robot').innerHTML = `
+    <div class="section-h">Robot layout</div>
+    <div class="fine">Drag the color sensor (circle), distance sensor (eyes) and arms (orange, blue pivot). Tap one to change it. Positions snap to ${SNAP} mm.</div>
+    <svg id="robot-editor" viewBox="${-REACH} ${-REACH} ${REACH * 2} ${REACH * 2}" role="img" aria-label="Top view of the robot. Drag parts to place them."></svg>
+    <div class="row"><button type="button" class="btn small" data-add-arm>Add arm</button><span class="muted" id="ed-pos"></span></div>
+    <div id="part-props" class="props"></div>
     <div class="section-h">Drive base</div>
-    <div class="form-grid">${NUM_FIELDS.map(([k, label]) => `<label>${label}<input type="number" step="any" data-cfgnum="${k}" value="${c[k]}"></label>`).join('')}</div>
-    <div class="section-h">Sensors &amp; ports</div>
-    <div class="form-grid">
-      <label>Drive motors (left, right)${sel('pair', PAIRS)}</label>
-      <label>Color sensor port${sel('colorPort', PORTS)}</label>
-      <label>Distance sensor port${sel('distPort', PORTS)}</label>
+    <div class="form-grid">${NUM_FIELDS.map(([k, label]) => `<label>${label}<input type="number" step="any" data-cfgnum="${k}" value="${c[k]}"></label>`).join('')}
+      <label>Drive motors (left, right)<select data-cfg="pair">${opt(PAIRS, c.pair)}</select></label>
     </div>
     <label class="check"><input type="checkbox" data-cfgbool="yawCW"${c.yawCW ? ' checked' : ''}>Yaw angle increases when turning clockwise</label>
     <label class="check"><input type="checkbox" data-cfgbool="collide"${c.collide ? ' checked' : ''}>Models and pieces are solid (off: drive through everything)</label>
     <label class="check"><input type="checkbox" data-cfgbool="shove"${c.shove ? ' checked' : ''}>Robot can shove fixed mission models (just for fun; real ones are held down)</label>
     <label class="check"><input type="checkbox" data-grid${state.grid ? ' checked' : ''}>Show the 20 cm wireframe grid</label>
-    <div class="fine">Importing a SPIKE file sets the drive motors and sensor ports from its blocks. Mission models are held in place like the real Dual Lock; loose pieces (purple) slide and turn when the robot pushes them. Lifting and mission mechanisms aren't simulated yet. Model positions are traced from the wireframe and are approximate.</div>`;
+    <div class="fine">Importing a SPIKE file sets the drive motors and sensor ports from its blocks. Arms push loose pieces and stop when they press on a model or the mat; mission mechanisms themselves aren't simulated yet. Model positions are traced from the wireframe and are approximate.</div>`;
+  renderEditor(); renderProps();
 }
+
+function renderEditor() {
+  const svg = $('robot-editor'); if (!svg) return;
+  svg.textContent = '';
+  const NS = 'http://www.w3.org/2000/svg';
+  const grid = document.createElementNS(NS, 'g'); svg.appendChild(grid);
+  for (let v = -REACH + 10; v < REACH; v += 50) {
+    for (const [x1, y1, x2, y2] of [[v, -REACH, v, REACH], [-REACH, v, REACH, v]]) {
+      const l = document.createElementNS(NS, 'line');
+      Object.entries({ x1, y1, x2, y2, stroke: 'rgba(255,255,255,.08)', 'stroke-width': 2 }).forEach(([k, val]) => l.setAttribute(k, val));
+      grid.appendChild(l);
+    }
+  }
+  const g = document.createElementNS(NS, 'g'); svg.appendChild(g);
+  drawRobot(g, state.cfg, {}, { editor: true, selected: state.sel });
+}
+
+function partOf(sel) {
+  if (sel === 'color') return state.cfg.color;
+  if (sel === 'dist') return state.cfg.dist;
+  if (sel && sel.startsWith('arm:')) return state.cfg.arms.find(a => a.id === sel.slice(4));
+  return null;
+}
+
+function renderProps() {
+  const box = $('part-props'); if (!box) return;
+  const c = state.cfg, part = partOf(state.sel);
+  if (!part) { box.innerHTML = '<div class="fine">Tap a part to edit it.</div>'; return; }
+  const xy = `<label>Right of axle middle (mm)<input type="number" step="${SNAP}" data-pp="x" value="${part.x}"></label>
+              <label>Ahead of axle (mm)<input type="number" step="${SNAP}" data-pp="y" value="${part.y}"></label>`;
+  if (state.sel === 'color') {
+    box.innerHTML = `<div class="props-h">Color sensor</div><div class="form-grid">
+      <label>Port<select data-cfg="colorPort">${opt(PORTS, c.colorPort)}</select></label>${xy}</div>`;
+  } else if (state.sel === 'dist') {
+    box.innerHTML = `<div class="props-h">Distance sensor</div><div class="form-grid">
+      <label>Port<select data-cfg="distPort">${opt(PORTS, c.distPort)}</select></label>
+      <label>Faces<select data-pp="dir">${opt(FACES, part.dir)}</select></label>${xy}</div>`;
+  } else {
+    const lift = part.motion !== 'sweep';
+    box.innerHTML = `<div class="props-h">Arm on motor ${esc(part.port)}</div><div class="form-grid">
+      <label>Motor port<select data-pp="port">${opt(PORTS, part.port)}</select></label>
+      <label>Movement<select data-pp="motion">${opt(['lift', 'sweep'], part.motion, o => o === 'lift' ? 'Lift / press (up and down)' : 'Sweep (side to side, flat)')}</select></label>
+      <label>Points<select data-pp="dir">${opt(FACES, part.dir)}</select></label>
+      <label>Length (mm)<input type="number" step="${SNAP}" data-pp="len" value="${part.len}"></label>
+      ${lift
+        ? `<label>Starts<select data-pp="rest">${opt(['up', 'down'], part.rest)}</select></label>
+           <label>Motor clockwise<select data-pp="cw">${opt(['lowers', 'raises'], part.cw)}</select></label>`
+        : `<label>Motor clockwise swings<select data-pp="cw">${opt(['right', 'left'], part.cw)}</select></label>`}
+      <label>Gear ratio (arm ° per motor °)<input type="number" step="any" data-pp="ratio" value="${part.ratio}"></label>
+      ${xy}</div>
+      <button type="button" class="btn small red" data-remove-arm>Remove this arm</button>`;
+  }
+}
+
+function robotChanged() { save(); sim.sens = sim.readSensors(sim.pose); drawField(); renderEditor(); }
+
 $('tab-robot').addEventListener('change', (e) => {
-  const t = e.target;
-  if (t.dataset.cfgnum) { const k = t.dataset.cfgnum, v = parseFloat(t.value); if (isFinite(v) && (v > 0 || SIGNED[k])) state.cfg[k] = v; }
+  const t = e.target, part = partOf(state.sel);
+  if (t.dataset.cfgnum) { const v = parseFloat(t.value); if (isFinite(v) && v > 0) state.cfg[t.dataset.cfgnum] = v; }
   else if (t.dataset.cfg) state.cfg[t.dataset.cfg] = t.value;
   else if (t.dataset.cfgbool) state.cfg[t.dataset.cfgbool] = t.checked;
   else if (t.hasAttribute('data-grid')) state.grid = t.checked;
-  save(); layoutRobot(); sim.sens = sim.readSensors(sim.pose); drawField();
+  else if (t.dataset.pp && part) {
+    const k = t.dataset.pp;
+    if (['x', 'y', 'len', 'ratio'].includes(k)) {
+      const v = parseFloat(t.value);
+      if (isFinite(v) && (k === 'x' || k === 'y' || v > 0)) part[k] = k === 'x' || k === 'y' ? Math.max(-REACH + 10, Math.min(REACH - 10, v)) : v;
+    } else {
+      part[k] = t.value;
+      if (k === 'motion') part.cw = t.value === 'sweep' ? 'right' : 'lowers';
+      renderProps();
+    }
+  }
+  robotChanged();
 });
+
+$('tab-robot').addEventListener('click', (e) => {
+  if (e.target.closest('[data-add-arm]')) {
+    const used = new Set(state.cfg.arms.map(a => a.port).concat(state.cfg.pair.split(''), [state.cfg.colorPort, state.cfg.distPort]));
+    const port = ['E', 'F', 'D', 'C', 'B', 'A'].find(p => !used.has(p)) || 'F';
+    const arm = { id: 'a' + Date.now().toString(36), port, motion: 'lift', x: 0, y: state.cfg.robotL - state.cfg.axleBack, dir: 'front', len: 90, rest: 'up', cw: 'lowers', ratio: 1 };
+    state.cfg.arms.push(arm); state.sel = 'arm:' + arm.id; renderProps(); robotChanged();
+  } else if (e.target.closest('[data-remove-arm]')) {
+    state.cfg.arms = state.cfg.arms.filter(a => 'arm:' + a.id !== state.sel); state.sel = 'color'; renderProps(); robotChanged();
+  }
+});
+
+// Dragging parts in the editor (mouse, pen or touch).
+let edDrag = null;
+const edPoint = (e) => {
+  const svg = $('robot-editor'); const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+  return { x: loc.x, y: -loc.y };
+};
+const snapMm = (v) => Math.max(-REACH + 10, Math.min(REACH - 10, Math.round(v / SNAP) * SNAP));
+$('tab-robot').addEventListener('pointerdown', (e) => {
+  const hit = e.target.closest('#robot-editor [data-part]'); if (!hit) return;
+  state.sel = hit.dataset.part; const part = partOf(state.sel); if (!part) return;
+  const p = edPoint(e);
+  edDrag = { part, dx: part.x - p.x, dy: part.y - p.y };
+  try { $('robot-editor').setPointerCapture(e.pointerId); } catch { /* pointer gone */ }
+  e.preventDefault(); renderEditor(); renderProps();
+});
+$('tab-robot').addEventListener('pointermove', (e) => {
+  if (!edDrag) return;
+  const p = edPoint(e);
+  edDrag.part.x = snapMm(p.x + edDrag.dx); edDrag.part.y = snapMm(p.y + edDrag.dy);
+  $('ed-pos').textContent = `${edDrag.part.x} mm right, ${edDrag.part.y} mm ahead of the axle`;
+  renderEditor(); drawField();
+});
+const edEnd = () => { if (!edDrag) return; edDrag = null; renderProps(); robotChanged(); };
+$('tab-robot').addEventListener('pointerup', edEnd);
+$('tab-robot').addEventListener('pointercancel', edEnd);
 
 // ---------- tabs, toolbar, start position ----------
 
@@ -440,5 +519,5 @@ let lastDraw = 0;
 function draw() { dirty = false; lastDraw = performance.now(); drawField(); }
 function frame() { if (dirty) draw(); requestAnimationFrame(frame); }
 
-buildField(); layoutRobot(); renderStart(); renderCode(); renderScore(); renderRobot(); renderLog(); drawField();
+buildField(); renderStart(); renderCode(); renderScore(); renderRobot(); renderLog(); drawField();
 requestAnimationFrame(frame);

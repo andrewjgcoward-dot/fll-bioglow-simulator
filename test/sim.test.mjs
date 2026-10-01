@@ -109,8 +109,51 @@ test('driving onto a line with start moving + wait until black stops on it', () 
 });
 
 test('the color sensor can sit left or right of center', () => {
-  const sim = new Sim({ colorSide: -60 }, { x: 600, y: 500, h: 0 }, []);
+  const sim = new Sim({ color: { x: -60, y: 70 } }, { x: 600, y: 500, h: 0 }, []);
   assert.ok(Math.abs(sim.sens.spot[0] - 540) < 0.01 && Math.abs(sim.sens.spot[1] - 570) < 0.01, JSON.stringify(sim.sens.spot));
+  const old = new Sim({ colorOff: 50, colorSide: 20 }, { x: 600, y: 500, h: 0 }, []);
+  assert.deepEqual(old.cfg.color, { x: 20, y: 50 }, 'settings from older versions carry over');
+});
+
+const lift = (extra) => Object.assign({ id: 'a', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'up', cw: 'lowers', ratio: 1 }, extra);
+
+test('a lift arm stops when it reaches the mat', () => {
+  const sim = new Sim({ arms: [lift()] }, { x: 1600, y: 300, h: 0 }, []);
+  runToEnd(sim, prog([['motor', { port: 'E', dir: 'clockwise', val: '1', unit: 'rotations' }]]));
+  assert.ok(Math.abs(sim.arms.E - 90) < 1, 'arm stopped at flat: ' + sim.arms.E);
+  assert.ok(sim.logLines.some(l => l.includes('pressed down on the mat')));
+});
+
+test('a lift arm coming down presses on a model and stops', () => {
+  // M02 is 70 x 60 at (630, 540); the arm tip reaches 190 mm ahead of the axle.
+  const sim = new Sim({ arms: [lift()] }, { x: 630, y: 370, h: 0 }, []);
+  runToEnd(sim, prog([['motor', { port: 'E', dir: 'clockwise', val: '90', unit: 'degrees' }]]));
+  assert.ok(sim.arms.E > 55 && sim.arms.E < 62, 'arm held up by the model at about 30°: ' + sim.arms.E);
+  assert.ok(sim.logLines.some(l => l.includes('pressed against M02')));
+});
+
+test('a lowered arm pushes pieces when driving; a raised one passes over', () => {
+  const run = (rest) => {
+    const sim = new Sim({ arms: [lift({ rest })] }, { x: 1600, y: 300, h: 0 }, [piece(1600, 620)]);
+    runToEnd(sim, prog([['move', { dir: 'forward', val: '15', unit: 'cm' }]]));
+    return sim.objects.find(o => o.loose).y;
+  };
+  assert.ok(run('down') > 650, 'lowered arm pushes the piece');
+  assert.equal(run('up'), 620, 'raised arm goes over it');
+});
+
+test('a sweep arm swings sideways and pushes a piece', () => {
+  const arm = { id: 's', port: 'F', motion: 'sweep', x: 70, y: 100, dir: 'front', len: 100, cw: 'right', ratio: 1 };
+  const sim = new Sim({ arms: [arm] }, { x: 1600, y: 300, h: 0 }, [piece(1730, 460)]);
+  runToEnd(sim, prog([['motor', { port: 'F', dir: 'clockwise', val: '90', unit: 'degrees' }]]));
+  const p = sim.objects.find(o => o.loose);
+  assert.ok(Math.abs(sim.arms.F - 90) < 0.5, 'arm swung all the way: ' + sim.arms.F);
+  assert.ok(p.x > 1730 || p.y < 460, 'piece moved: ' + p.x + ',' + p.y);
+});
+
+test('the distance sensor can face sideways', () => {
+  const sim = new Sim({ dist: { x: 80, y: 0, dir: 'right' } }, { x: 1000, y: 900, h: 0 }, []);
+  assert.ok(Math.abs(sim.sens.dist - (2000 - 1080) / 10) < 0.1, 'distance to the right wall: ' + sim.sens.dist);
 });
 
 test('interrupting outside home during a match costs a token', () => {
