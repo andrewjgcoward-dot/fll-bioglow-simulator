@@ -195,6 +195,9 @@ export function convertProject(proj) {
     }
   };
   walk(blocks[hat].next);
+  // Common mix-up: "if sensor … then stop moving" checks once and moves on; it doesn't wait for the line.
+  const checkOnce = out.filter((b, i) => (b.t === 'ifColor' || b.t === 'ifDist') && out[i + 1] && out[i + 1].t === 'stopMove').length;
+  if (checkOnce) warn.push('Tip: “if … then stop moving” checks the sensor once, right away' + (checkOnce > 1 ? ' (' + checkOnce + ' places)' : '') + '. To stop on a line, use “start moving”, then “wait until … is color”, then “stop moving”.');
   const sk = Object.keys(skipped);
   if (sk.length) warn.push('Shown in gray, not simulated yet: ' + sk.map(k => k + (skipped[k] > 1 ? ' ×' + skipped[k] : '')).join(', ') + '.');
   return { program: out, warn, cfg };

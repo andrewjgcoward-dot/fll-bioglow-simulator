@@ -10,6 +10,7 @@ export const DEFAULT_CONFIG = {
   top: 1000,        // wheel speed at 100 %, degrees per second
   robotW: 160, robotL: 200,
   colorOff: 70,     // color sensor distance ahead of the robot's center, mm
+  colorSide: 0,     // color sensor distance right of center, mm (negative = left)
   pair: 'AB', colorPort: 'C', distPort: 'D',
   yawCW: true,      // yaw grows when turning clockwise
   collide: true,    // models and pieces are solid (off = drive through everything)
@@ -135,7 +136,7 @@ export class Sim {
   placeRobot() {
     const s = this.start;
     this.pose = { x: s.x, y: s.y, h: s.h };
-    this.yawZero = s.h; this.trail = []; this.trailT = 0; this.hit = null;
+    this.yawZero = s.h; this.trail = []; this.seen = []; this.trailT = 0; this.hit = null;
     this.sens = this.readSensors(this.pose);
   }
 
@@ -151,7 +152,7 @@ export class Sim {
     this.arms = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
     this.pair = this.cfg.pair;
     this.display = '';
-    this.trail = []; this.trailT = 0;
+    this.trail = []; this.seen = []; this.trailT = 0;
     this.hit = null;
     this.sens = this.readSensors(this.pose);
   }
@@ -212,7 +213,8 @@ export class Sim {
 
   readSensors(p) {
     const c = this.cfg; const { f } = axes(p.h);
-    const sp = [p.x + f[0] * c.colorOff, p.y + f[1] * c.colorOff];
+    const { r } = axes(p.h); const side = c.colorSide || 0;
+    const sp = [p.x + f[0] * c.colorOff + r[0] * side, p.y + f[1] * c.colorOff + r[1] * side];
     const o = [p.x + f[0] * c.robotL / 2, p.y + f[1] * c.robotL / 2];
     let t = Infinity;
     if (f[0] > 1e-9) t = Math.min(t, (FW - o[0]) / f[0]);
@@ -223,7 +225,7 @@ export class Sim {
     let yaw = p.h - (this.yawZero === undefined ? p.h : this.yawZero);
     yaw = ((yaw % 360) + 540) % 360 - 180;
     if (!c.yawCW) yaw = -yaw;
-    return { color: matColor(sp), dist: t <= 2000 ? t / 10 : null, rayLen: Math.min(t, 2000), origin: o, yaw };
+    return { color: matColor(sp), spot: sp, dist: t <= 2000 ? t / 10 : null, rayLen: Math.min(t, 2000), origin: o, yaw };
   }
 
   cond(b, s) {
@@ -367,9 +369,16 @@ export class Sim {
       if (hit) { stalled = true; if (this.hit !== hit) this.log('Bumped into ' + hit + '.'); this.hit = hit; }
       else { this.pose = np; fast = Math.abs(sp) * dt; this.hit = null; }
       this.trailT += dt;
-      if (!stalled && this.trailT > 0.06) { this.trailT = 0; this.trail.push([this.pose.x, this.pose.y]); if (this.trail.length > 2000) this.trail.shift(); }
+      if (!stalled && this.trailT > 0.06) {
+        this.trailT = 0; this.trail.push([this.pose.x, this.pose.y]); if (this.trail.length > 2000) this.trail.shift();
+      }
     }
     this.sens = this.readSensors(this.pose);
+    // Remember where the color sensor saw something other than plain mat, to draw on the field.
+    if (cmd && !stalled && this.sens.color !== 'green') {
+      const last = this.seen[this.seen.length - 1], sp = this.sens.spot;
+      if (!last || Math.hypot(last[0] - sp[0], last[1] - sp[1]) > 8) { this.seen.push([sp[0], sp[1], this.sens.color]); if (this.seen.length > 3000) this.seen.shift(); }
+    }
     const c = this.cur;
     if (this.running && c && !c.done) {
       c.t += dt;

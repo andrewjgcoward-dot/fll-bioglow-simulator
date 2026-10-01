@@ -99,6 +99,20 @@ test('color sensor sees white in home and black on a mat line', () => {
   assert.equal(onLine.sens.color, 'black');
 });
 
+test('driving onto a line with start moving + wait until black stops on it', () => {
+  // The bottom-middle line runs from (940,422) to (1008,306); drive across it heading north.
+  const sim = new Sim({}, { x: 975, y: 150, h: 0 }, []);
+  sim.cfg.collide = false;
+  runToEnd(sim, prog([['startMove', { dir: 'forward' }], ['waitColor', { port: 'C', color: 'black' }], ['stopMove', {}]]));
+  assert.equal(sim.sens.color, 'black');
+  assert.ok(sim.seen.some(s => s[2] === 'black'), 'black spot recorded for the field drawing');
+});
+
+test('the color sensor can sit left or right of center', () => {
+  const sim = new Sim({ colorSide: -60 }, { x: 600, y: 500, h: 0 }, []);
+  assert.ok(Math.abs(sim.sens.spot[0] - 540) < 0.01 && Math.abs(sim.sens.spot[1] - 570) < 0.01, JSON.stringify(sim.sens.spot));
+});
+
 test('interrupting outside home during a match costs a token', () => {
   const sim = new Sim({}, { x: 240, y: 240, h: 0 });
   sim.startMatch();

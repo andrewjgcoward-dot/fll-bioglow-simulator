@@ -67,7 +67,8 @@ function buildField() {
   for (const L of LINES) svgEl('polyline', { points: L.map(([x, y]) => `${x},${Y(y)}`).join(' '), fill: 'none', stroke: '#0A0A0A', 'stroke-width': 20, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, field);
   refs.objs = svgEl('g', {}, field); refs.objEls = [];
   refs.trail = svgEl('polyline', { fill: 'none', stroke: '#8FE3B0', 'stroke-width': 6, 'stroke-opacity': .7, 'stroke-dasharray': '2 10', 'stroke-linecap': 'round', 'pointer-events': 'none' }, field);
-  refs.beam = svgEl('line', { stroke: 'rgba(143,227,176,.6)', 'stroke-width': 4, 'pointer-events': 'none' }, field);
+  refs.seen = svgEl('g', { 'pointer-events': 'none' }, field); refs.seenPaths = {};
+  refs.beam = svgEl('line',{ stroke: 'rgba(143,227,176,.6)', 'stroke-width': 4, 'pointer-events': 'none' }, field);
   refs.robot = svgEl('g', { 'pointer-events': 'none' }, field);
   refs.body = svgEl('rect', { rx: 16, fill: '#F5C518', stroke: '#1A1A1A', 'stroke-width': 4 }, refs.robot);
   refs.wl = svgEl('rect', { rx: 4, fill: '#1A1A1A' }, refs.robot);
@@ -75,8 +76,17 @@ function buildField() {
   refs.hub = svgEl('rect', { rx: 8, fill: '#fff', stroke: '#1A1A1A', 'stroke-width': 4 }, refs.robot);
   refs.bumper = svgEl('rect', { rx: 4, fill: '#1A1A1A' }, refs.robot);
   refs.sensor = svgEl('circle', { r: 12, stroke: '#1A1A1A', 'stroke-width': 4 }, refs.robot);
+  // Attachment motor dials (E left, F right) so arm moves are visible on the robot.
+  refs.dials = {};
+  for (const port of ['E', 'F']) {
+    const g = svgEl('g', {}, refs.robot);
+    svgEl('circle', { r: 22, fill: '#0B62AD', stroke: '#1A1A1A', 'stroke-width': 3 }, g);
+    const needle = svgEl('line', { x1: 0, y1: 0, x2: 0, y2: -18, stroke: '#fff', 'stroke-width': 5, 'stroke-linecap': 'round' }, g);
+    const t = svgEl('text', { 'text-anchor': 'middle', y: 44, class: 'dial-l' }, g); t.textContent = port;
+    refs.dials[port] = { g, needle };
+  }
   const style = svgEl('style', {}, field);
-  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747}';
+  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A}';
 }
 
 // Mission models, docks and loose pieces come from the simulation, since they can move.
@@ -110,14 +120,16 @@ function syncObjects() {
 }
 
 function layoutRobot() {
-  const { robotW: w, robotL: l, colorOff } = state.cfg;
+  const { robotW: w, robotL: l, colorOff, colorSide } = state.cfg;
+  refs.dials.E.g.setAttribute('transform', `translate(${-w * 0.25} ${l * 0.28})`);
+  refs.dials.F.g.setAttribute('transform', `translate(${w * 0.25} ${l * 0.28})`);
   const set = (e, a) => { for (const k in a) e.setAttribute(k, a[k]); };
   set(refs.body, { x: -w / 2, y: -l / 2, width: w, height: l });
   set(refs.wl, { x: -w / 2 - 10, y: -l * 0.1, width: 20, height: l * 0.32 });
   set(refs.wr, { x: w / 2 - 10, y: -l * 0.1, width: 20, height: l * 0.32 });
   set(refs.hub, { x: -w / 4, y: -l * 0.2, width: w / 2, height: l * 0.36 });
   set(refs.bumper, { x: -w * 0.3, y: -l / 2 - 4, width: w * 0.6, height: 14 });
-  set(refs.sensor, { cx: 0, cy: -colorOff });
+  set(refs.sensor, { cx: colorSide || 0, cy: -colorOff });
 }
 
 function drawField() {
@@ -128,6 +140,14 @@ function drawField() {
   refs.body.setAttribute('stroke', sim.hit ? '#F2A6A0' : sim.running ? '#8FE3B0' : '#1A1A1A');
   refs.sensor.setAttribute('fill', SWATCH[s.color] || '#5B7066');
   refs.trail.setAttribute('points', sim.trail.map(([x, y]) => `${x.toFixed(0)},${Y(y).toFixed(0)}`).join(' '));
+  for (const port of ['E', 'F']) refs.dials[port].needle.setAttribute('transform', `rotate(${(sim.arms[port] % 360).toFixed(1)})`);
+  // Dots where the color sensor saw something other than plain mat (one path per color).
+  const byColor = {};
+  for (const [x, y, c] of sim.seen) (byColor[c] = byColor[c] || []).push(`M${x.toFixed(0)} ${Y(y).toFixed(0)}h0`);
+  for (const c of new Set(Object.keys(byColor).concat(Object.keys(refs.seenPaths)))) {
+    if (!refs.seenPaths[c]) refs.seenPaths[c] = svgEl('path', { fill: 'none', stroke: SWATCH[c] || '#999', 'stroke-width': 14, 'stroke-linecap': 'round', 'stroke-opacity': .9 }, refs.seen);
+    refs.seenPaths[c].setAttribute('d', (byColor[c] || []).join(''));
+  }
   const a = p.h * Math.PI / 180, o = s.origin;
   refs.beam.setAttribute('x1', o[0]); refs.beam.setAttribute('y1', Y(o[1]));
   refs.beam.setAttribute('x2', o[0] + Math.sin(a) * s.rayLen); refs.beam.setAttribute('y2', Y(o[1] + Math.cos(a) * s.rayLen));
@@ -274,7 +294,8 @@ $('tab-score').addEventListener('click', (e) => {
 
 // ---------- robot tab ----------
 
-const NUM_FIELDS = [['wheel', 'Wheel diameter (mm)'], ['track', 'Wheel spacing (mm)'], ['top', 'Top wheel speed (°/s)'], ['robotW', 'Robot width (mm)'], ['robotL', 'Robot length (mm)'], ['colorOff', 'Color sensor ahead of center (mm)']];
+const NUM_FIELDS = [['wheel', 'Wheel diameter (mm)'], ['track', 'Wheel spacing (mm)'], ['top', 'Top wheel speed (°/s)'], ['robotW', 'Robot width (mm)'], ['robotL', 'Robot length (mm)'], ['colorOff', 'Color sensor ahead of center (mm)'], ['colorSide', 'Color sensor right of center (mm, left is −)']];
+const SIGNED = { colorOff: true, colorSide: true };
 function renderRobot() {
   const c = state.cfg;
   const sel = (k, opts) => `<select data-cfg="${k}">${opts.map(o => `<option${o === c[k] ? ' selected' : ''}>${o}</option>`).join('')}</select>`;
@@ -295,7 +316,7 @@ function renderRobot() {
 }
 $('tab-robot').addEventListener('change', (e) => {
   const t = e.target;
-  if (t.dataset.cfgnum) { const v = parseFloat(t.value); if (isFinite(v) && v > 0) state.cfg[t.dataset.cfgnum] = v; }
+  if (t.dataset.cfgnum) { const k = t.dataset.cfgnum, v = parseFloat(t.value); if (isFinite(v) && (v > 0 || SIGNED[k])) state.cfg[k] = v; }
   else if (t.dataset.cfg) state.cfg[t.dataset.cfg] = t.value;
   else if (t.dataset.cfgbool) state.cfg[t.dataset.cfgbool] = t.checked;
   else if (t.hasAttribute('data-grid')) state.grid = t.checked;
