@@ -221,6 +221,7 @@ function drawField() {
 const HOW = {
   push: ['PUSH', 'Drive the robot into it, or swing a sweep arm into it.'],
   press: ['PRESS', 'Bring a lift arm down on top of it.'],
+  lift: ['LIFT', 'Hook a lift arm against it (under the handle) and raise the arm.'],
   touch: ['DON’T TOUCH', 'Leave it alone: it scores only if nothing touches it.']
 };
 const missionIds = (o) => o.dock ? [o.holds] : (o.n || '').split(' ').filter(Boolean).map(n => 'M' + n);

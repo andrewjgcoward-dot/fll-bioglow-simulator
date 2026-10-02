@@ -22,7 +22,10 @@ export const MODELS = [
   { key: 'm0809', n: '08 09', name: 'M08 Tangled / M09 Research Platform', x: 578, y: 1068, w: 159, h: 103, r: 0 },
   { key: 'm10spider', n: '10', name: 'M10 spider habitat', x: 749, y: 1048, w: 45, h: 45, r: 0 },
   { key: 'm10snail', n: '10', name: 'M10 snail habitat', x: 1040, y: 720, w: 45, h: 35, r: 0 },
-  { key: 'm0607', n: '06 07', name: 'M06 Leafcutter Frenzy / M07 Humongous Fungus', x: 1542, y: 1072, w: 159, h: 120, r: 0 },
+  // M06 and M07 stand side by side on the back wall: the nest (ant on a rack in front) to the west,
+  // the mycelium (red handle in front) to the east (Field Setup Reference Guide, page 8).
+  { key: 'm06', n: '06', name: 'M06 Leafcutter Frenzy', x: 1502, y: 1072, w: 80, h: 120, r: 0 },
+  { key: 'm07', n: '07', name: 'M07 Humongous Fungus', x: 1582, y: 1072, w: 79, h: 120, r: 0 },
   { key: 'm11', n: '11', name: 'M11 Window to the Past', x: 1406, y: 594, w: 80, h: 80, r: 45 },
   { key: 'm12', n: '12', name: 'M12 Forest Elder', x: 1940, y: 758, w: 73, h: 73, r: 0, round: true },
   { key: 'm12post', n: '12', name: 'M12 Forest Elder post', x: 1940, y: 538, w: 25, h: 45, r: 0 }
@@ -87,8 +90,10 @@ export function totalScore(score, tokens, inspection) {
 // to how the robot touches it:
 //   push  = the robot (or a sweep arm) drives into it
 //   press = a lift arm comes down on it
+//   lift  = a lift arm hooked against it is raised (lifting or pulling a handle)
 //   touch = any contact (for models that must not be disturbed)
 // "sets" are score sheet items the action completes. "hold" needs that many seconds of pushing.
+// "fragments" scores that many pieces for a slow push and fewer for a fast one (M06's leaves scatter).
 // A push can also be required to come from one side of the mat (see APPROACH); the default is any side.
 export const MECHANISMS = [
   { id: 'm01-pilot', model: 'm01pilot', how: 'push', sets: ['m01a'], says: 'M01: the pilot launched the drone.', lifts: 'm01drone' },
@@ -98,7 +103,8 @@ export const MECHANISMS = [
   { id: 'm04-leaf', model: 'm04', how: 'press', sets: ['m04a'], says: 'M04: a leaf came off the nest.' },
   { id: 'm05-part', model: 'm05', how: 'push', sets: ['m05a'], says: 'M05: the plant root is partly extended.' },
   { id: 'm05-full', model: 'm05', how: 'push', hold: 1, sets: ['m05b'], clears: ['m05a'], says: 'M05: the plant root is completely extended.' },
-  { id: 'm07-mycelium', model: 'm0607', how: 'push', sets: ['m07a'], says: 'M07: the mycelium is extended.' },
+  { id: 'm06-ant', model: 'm06', how: 'push', fragments: 3, says: 'M06: the ant reached the nest.' },
+  { id: 'm07-mycelium', model: 'm07', how: 'lift', sets: ['m07a'], says: 'M07: the mycelium is extended.' },
   { id: 'm08-vine', model: 'm0809', how: 'press', sets: ['m08'], says: 'M08: the vine is down on the mat.' },
   { id: 'm09-platform', model: 'm0809', how: 'push', sets: ['m09a'], says: 'M09: the research platform is raised.' },
   { id: 'm10-spider', model: 'm10spider', how: 'touch', clears: ['m10a'], says: 'M10: the spider habitat was disturbed.' },
@@ -108,9 +114,9 @@ export const MECHANISMS = [
   { id: 'm15-canopy', dock: 'M15', how: 'press', sets: ['m15a'], says: 'M15: the nesting canopy is raised.' },
   { id: 'm15-hatch', dock: 'M15', how: 'push', sets: ['m15c'], says: 'M15: the compost hatch is open.' }
 ];
-// Score items the simulation can fill in. M10 starts complete and is lost when touched;
+// Score items the simulation can fill in. M10 starts complete and is lost when touched; M06 counts leaf fragments;
 // M02, M13 and M14 are counted from where seeds and the keystone species end up.
-export const AUTO_KEYS = ['m01a', 'm01b', 'm02', 'm03a', 'm04a', 'm05a', 'm05b', 'm07a', 'm08', 'm09a', 'm10a', 'm10b', 'm11', 'm12a', 'm13', 'm14a', 'm15a', 'm15c'];
+export const AUTO_KEYS = ['m01a', 'm01b', 'm02', 'm03a', 'm04a', 'm05a', 'm05b', 'm06', 'm07a', 'm08', 'm09a', 'm10a', 'm10b', 'm11', 'm12a', 'm13', 'm14a', 'm15a', 'm15c'];
 
 // Approach sides for pushes: the direction the robot comes from, as compass points on the mat
 // (north = the back wall, south = the home wall, west = the red home side, east = the blue home side).

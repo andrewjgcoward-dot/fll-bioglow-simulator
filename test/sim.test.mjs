@@ -528,3 +528,28 @@ test('a model set to one approach side only reacts to pushes from that side', ()
   runToEnd(south, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
   assert.equal(south.mission.m03a, true);
 });
+
+test('M06: a slow push keeps all the leaf fragments, a fast one scatters some', () => {
+  const push = (pct) => {
+    const s = new Sim({ arms: [] }, { x: 1502, y: 780, h: 0 }, []);
+    runToEnd(s, prog([['speed', { pct: String(pct) }], ['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+    return s;
+  };
+  const slow = push(25), fast = push(100);
+  assert.equal(slow.mission.m06, 3);
+  assert.equal(fast.mission.m06, 1);
+  assert.ok(slow.logLines.some(l => l.includes('3 of 3 leaf fragments')));
+  assert.notEqual(slow.mission.m07a, true, 'pushing is not the M07 action');
+});
+
+test('M07: raising a lift arm hooked against the mycelium extends it; pressing does not', () => {
+  const arm = { id: 'a1', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'down', cw: 'raises', ratio: 1 };
+  const s = new Sim({ arms: [arm] }, { x: 1582, y: 760, h: 0 }, []);
+  runToEnd(s, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }], ['motor', { port: 'E', dir: 'clockwise', val: '60', unit: 'degrees' }]]));
+  assert.equal(s.mission.m07a, true);
+  assert.ok(s.objects.find(o => o.key === 'm07').done);
+  // Driving the same arm into it without raising it does nothing for M07.
+  const t = new Sim({ arms: [arm] }, { x: 1582, y: 760, h: 0 }, []);
+  runToEnd(t, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+  assert.notEqual(t.mission.m07a, true);
+});

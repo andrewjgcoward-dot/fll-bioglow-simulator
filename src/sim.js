@@ -23,6 +23,7 @@ export const DEFAULT_CONFIG = {
 
 export const DIR_ANGLE = { front: 0, right: 90, back: 180, left: -90 };
 const ARM_WIDTH = 16;      // mm, for collisions
+const HOOK = 12;           // mm: how close a lift arm must be to a model to hook it when rising
 const LIFT_SOLID = 30;     // a lift arm tilted at most this far up is low enough to hit things
 
 // Fill in defaults and convert settings saved by older versions.
@@ -192,17 +193,25 @@ export class Sim {
 
   // --- mission mechanisms (simplified; see MECHANISMS in field.js) ---
   resetMission() {
-    this.mission = { m10a: true, m10b: true, m02: 0, m13: false, m14a: 0 };
-    this.mechDone = new Set(); this.holdT = {}; this.contacts = new Map(); this.missed = new Set();
+    this.mission = { m10a: true, m10b: true, m02: 0, m06: 0, m13: false, m14a: 0 };
+    this.mechDone = new Set(); this.holdT = {}; this.contacts = new Map(); this.missed = new Set(); this.contactSpeed = new Map(); this.pushSpeed = null;
   }
 
-  // Remember how the robot touched a model this step: 'push' (with the push direction) or 'press'.
+  // Remember how the robot touched a model this step: 'push' (with the push direction and speed),
+  // 'press' or 'lift'.
   touch(o, how, dir) {
     const k = o.dock ? 'dock:' + o.holds : o.key;
     if (!k) return;
     const key = k + '|' + how;
     if (!this.contacts.has(key)) this.contacts.set(key, []);
     if (dir) this.contacts.get(key).push(dir);
+    if (how === 'push') this.contactSpeed.set(key, Math.max(this.contactSpeed.get(key) || 0, this.pushSpeed ?? this.driveSpeedPct()));
+  }
+
+  // How fast the wheels are turning, as a percentage of top speed.
+  driveSpeedPct() {
+    const v = this.vel || { L: 0, R: 0 };
+    return Math.round((Math.abs(v.L) + Math.abs(v.R)) / 2 / this.cfg.top * 100);
   }
 
   // Does a push in one of these directions count for mechanism m?
@@ -214,7 +223,7 @@ export class Sim {
   }
 
   runMechanisms(dt) {
-    const now = this.contacts; this.contacts = new Map();
+    const now = this.contacts, speeds = this.contactSpeed; this.contacts = new Map(); this.contactSpeed = new Map();
     MECHANISMS.forEach((m, i) => {
       const k = m.model || 'dock:' + m.dock;
       let hit = m.how === 'touch' ? [...now.keys()].some(c => c.startsWith(k + '|')) : now.has(k + '|' + m.how);
@@ -232,6 +241,14 @@ export class Sim {
       if (model) { if (m.how === 'touch') model.hurt = true; else model.done = true; }
       if (m.lifts) { const o = this.objects.find(x => x.key === m.lifts); if (o) o.lifted = true; }
       if (m.seeds && model) this.popSeeds(model, m.seeds);
+      if (m.fragments) {
+        // Slow and steady keeps the leaf fragments in the nest; a fast push scatters some.
+        const speed = speeds.get(k + '|push') || 0;
+        const kept = speed <= 35 ? m.fragments : speed <= 65 ? m.fragments - 1 : 1;
+        this.mission[m.model] = kept;
+        this.log(`${m.says} ${kept} of ${m.fragments} leaf fragments stayed in (pushed at ${speed}% speed). (simplified)`);
+        return;
+      }
       this.log(m.says + ' (simplified)');
     });
     // Counted from where pieces are: keystone species in the M13 dock, seeds in the M14 dock.
@@ -328,9 +345,20 @@ export class Sim {
     if (!arm) return null;
     const g = armGeom(arm, motorDeg);
     if (arm.motion !== 'sweep' && (g.raw < -0.01 || g.raw > 90.01)) return g.raw < 0 ? 'the mat' : 'its top stop';
+    // A low lift arm that rises while hooked against a model lifts (or pulls) that model's handle.
+    if (arm.motion !== 'sweep' && this.cfg.collide) {
+      const was = armGeom(arm, this.arms[port] || 0), hook = this.armBox(this.pose, arm, this.arms[port] || 0);
+      if (hook && g.tilt > was.tilt) {
+        const reach = Object.assign({}, hook, { w: hook.w + 2 * HOOK, h: hook.h + 2 * HOOK });
+        for (const o of this.objects) if (!o.lifted && !o.loose && overlap(reach, o)) this.touch(o, 'lift');
+      }
+    }
     const box = this.armBox(this.pose, arm, motorDeg);
     if (!box) return null;
-    if (arm.motion === 'sweep') return this.pushOut([box]);
+    if (arm.motion === 'sweep') {
+      this.pushSpeed = Math.abs(this.motorSpeed[port] ?? 75);
+      try { return this.pushOut([box]); } finally { this.pushSpeed = null; }
+    }
     // A lift arm coming down presses on whatever is under it instead of shoving it aside.
     for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
     if (this.cfg.collide) for (const o of this.objects) if (!o.lifted && overlap(box, o)) { this.touch(o, 'press'); return o.name; }
