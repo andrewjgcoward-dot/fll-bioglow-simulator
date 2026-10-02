@@ -90,10 +90,12 @@ export function totalScore(score, tokens, inspection) {
 // to how the robot touches it:
 //   push  = the robot (or a sweep arm) drives into it
 //   press = a lift arm comes down on it
-//   lift  = a lift arm hooked against it is raised (lifting or pulling a handle)
+//   lift  = a low lift arm right against it is raised (lifting a lever from underneath)
+//   pull  = a lift arm lowered onto it (hooked behind a handle) is dragged away as the robot drives off
 //   touch = any contact (for models that must not be disturbed)
 // "sets" are score sheet items the action completes. "hold" needs that many seconds of pushing.
 // "fragments" scores that many pieces for a slow push and fewer for a fast one (M06's leaves scatter).
+// "pull" needs the robot to drag the hooked arm that many mm.
 // A push can also be required to come from one side of the mat (see APPROACH); the default is any side.
 export const MECHANISMS = [
   { id: 'm01-pilot', model: 'm01pilot', how: 'push', sets: ['m01a'], says: 'M01: the pilot launched the drone.', lifts: 'm01drone' },
@@ -104,13 +106,13 @@ export const MECHANISMS = [
   { id: 'm05-part', model: 'm05', how: 'push', sets: ['m05a'], says: 'M05: the plant root is partly extended.' },
   { id: 'm05-full', model: 'm05', how: 'push', hold: 1, sets: ['m05b'], clears: ['m05a'], says: 'M05: the plant root is completely extended.' },
   { id: 'm06-ant', model: 'm06', how: 'push', fragments: 3, says: 'M06: the ant reached the nest.' },
-  { id: 'm07-mycelium', model: 'm07', how: 'lift', sets: ['m07a'], says: 'M07: the mycelium is extended.' },
+  { id: 'm07-mycelium', model: 'm07', how: 'pull', pull: 40, sets: ['m07a'], says: 'M07: the mycelium is extended.' },
   { id: 'm08-vine', model: 'm0809', how: 'press', sets: ['m08'], says: 'M08: the vine is down on the mat.' },
   { id: 'm09-platform', model: 'm0809', how: 'push', sets: ['m09a'], says: 'M09: the research platform is raised.' },
   { id: 'm10-spider', model: 'm10spider', how: 'touch', clears: ['m10a'], says: 'M10: the spider habitat was disturbed.' },
   { id: 'm10-snail', model: 'm10snail', how: 'touch', clears: ['m10b'], says: 'M10: the snail habitat was disturbed.' },
   { id: 'm11-cover', model: 'm11', how: 'push', sets: ['m11'], says: 'M11: the root cover is down.' },
-  { id: 'm12-cane', model: 'm12', how: 'press', sets: ['m12a'], says: 'M12: the cane is raised.' },
+  { id: 'm12-cane', model: 'm12', how: 'lift', sets: ['m12a'], says: 'M12: the cane is raised.' },
   { id: 'm15-canopy', dock: 'M15', how: 'press', sets: ['m15a'], says: 'M15: the nesting canopy is raised.' },
   { id: 'm15-hatch', dock: 'M15', how: 'push', sets: ['m15c'], says: 'M15: the compost hatch is open.' }
 ];

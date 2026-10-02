@@ -24,6 +24,7 @@ export const DEFAULT_CONFIG = {
 export const DIR_ANGLE = { front: 0, right: 90, back: 180, left: -90 };
 const ARM_WIDTH = 16;      // mm, for collisions
 const HOOK = 12;           // mm: how close a lift arm must be to a model to hook it when rising
+const PULL_MAX = 80;       // mm a hooked arm drags a model before it slips off
 const LIFT_SOLID = 30;     // a lift arm tilted at most this far up is low enough to hit things
 
 // Fill in defaults and convert settings saved by older versions.
@@ -195,6 +196,7 @@ export class Sim {
   resetMission() {
     this.mission = { m10a: true, m10b: true, m02: 0, m06: 0, m13: false, m14a: 0 };
     this.mechDone = new Set(); this.holdT = {}; this.contacts = new Map(); this.missed = new Set(); this.contactSpeed = new Map(); this.pushSpeed = null;
+    this.resting = {}; this.pullDist = {}; // lift arms lowered onto a model (by port), and how far each model was pulled
   }
 
   // Remember how the robot touched a model this step: 'push' (with the push direction and speed),
@@ -227,6 +229,7 @@ export class Sim {
     MECHANISMS.forEach((m, i) => {
       const k = m.model || 'dock:' + m.dock;
       let hit = m.how === 'touch' ? [...now.keys()].some(c => c.startsWith(k + '|')) : now.has(k + '|' + m.how);
+      if (hit && m.pull && (this.pullDist[k] || 0) < m.pull) hit = false; // not pulled far enough yet
       if (hit && !this.rightSide(m, now.get(k + '|' + m.how))) {
         hit = false; // pushed from the wrong side: the real lever wouldn't move
         if (!this.mechDone.has(i) && !this.missed.has(m.model || m.dock)) { this.missed.add(m.model || m.dock); this.log(m.says.split(':')[0] + ': touched, but nothing happened.'); }
@@ -352,6 +355,7 @@ export class Sim {
         const reach = Object.assign({}, hook, { w: hook.w + 2 * HOOK, h: hook.h + 2 * HOOK });
         for (const o of this.objects) if (!o.lifted && !o.loose && overlap(reach, o)) this.touch(o, 'lift');
       }
+      if (g.tilt > was.tilt) delete this.resting[port]; // raising the arm unhooks it
     }
     const box = this.armBox(this.pose, arm, motorDeg);
     if (!box) return null;
@@ -361,8 +365,25 @@ export class Sim {
     }
     // A lift arm coming down presses on whatever is under it instead of shoving it aside.
     for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
-    if (this.cfg.collide) for (const o of this.objects) if (!o.lifted && overlap(box, o)) { this.touch(o, 'press'); return o.name; }
+    if (this.cfg.collide) for (const o of this.objects) if (!o.lifted && overlap(box, o)) {
+      this.touch(o, 'press');
+      if (!o.loose && !o.dock) this.resting[port] = o; // resting on the model: driving away now pulls it
+      return o.name;
+    }
     return null;
+  }
+
+  // Lift arms resting on a model pull it as the robot drives away. A hook lets go after PULL_MAX mm,
+  // or if the robot drives back toward the model.
+  dragHooks(p0, p1) {
+    for (const [port, o] of Object.entries(this.resting)) {
+      const d0 = Math.hypot(p0.x - o.x, p0.y - o.y), d1 = Math.hypot(p1.x - o.x, p1.y - o.y);
+      if (d1 < d0 - 0.5) { delete this.resting[port]; continue; }
+      if (d1 <= d0) continue;
+      this.pullDist[o.key] = (this.pullDist[o.key] || 0) + (d1 - d0);
+      this.touch(o, 'pull');
+      if (this.pullDist[o.key] >= PULL_MAX) delete this.resting[port];
+    }
   }
 
   collides(p) {
@@ -784,6 +805,7 @@ export class Sim {
       // Log a bump once per move, not every time the wheels grind against the same thing.
       if (hit) { stalled = true; if (this.lastBump !== hit) this.log('Bumped into ' + hit + '.'); this.hit = hit; this.lastBump = hit; }
       else {
+        this.dragHooks(this.pose, np);
         this.pose = np; this.hit = null;
         fast = Math.max(Math.abs(L), Math.abs(R)) * dt;
         const [pl, pr] = this.pair.split('');

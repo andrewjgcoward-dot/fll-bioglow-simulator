@@ -434,12 +434,14 @@ test('pushing M02 pops seeds; seeds pushed into the M14 dock count', () => {
   assert.equal(sim.mission.m14a, 1);
 });
 
-test('a lift arm pressing down on M12 raises the cane', () => {
-  const arm = { id: 'a', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'up', cw: 'lowers', ratio: 1 };
-  // M12 is at (1940, 758): sit just below it facing up so the arm reaches over it.
-  const sim = new Sim({ arms: [arm] }, { x: 1940, y: 560, h: 0 }, []);
-  sim.cfg.collide = true;
-  runToEnd(sim, prog([['motor', { port: 'E', dir: 'clockwise', val: '90', unit: 'degrees' }]]));
+test('a low lift arm raised against M12 lifts the cane; pressing down does not', () => {
+  // M12 is at (1940, 758): sit just below it facing up, arm flat on the mat touching it.
+  const arm = { id: 'a', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'down', cw: 'raises', ratio: 1 };
+  const press = new Sim({ arms: [{ ...arm, rest: 'up', cw: 'lowers' }] }, { x: 1940, y: 560, h: 0 }, []);
+  runToEnd(press, prog([['motor', { port: 'E', dir: 'clockwise', val: '90', unit: 'degrees' }]]));
+  assert.notEqual(press.mission.m12a, true);
+  const sim = new Sim({ arms: [arm] }, { x: 1940, y: 530, h: 0 }, []);
+  runToEnd(sim, prog([['motor', { port: 'E', dir: 'clockwise', val: '60', unit: 'degrees' }]]));
   assert.equal(sim.mission.m12a, true);
 });
 
@@ -542,14 +544,19 @@ test('M06: a slow push keeps all the leaf fragments, a fast one scatters some', 
   assert.notEqual(slow.mission.m07a, true, 'pushing is not the M07 action');
 });
 
-test('M07: raising a lift arm hooked against the mycelium extends it; pressing does not', () => {
-  const arm = { id: 'a1', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'down', cw: 'raises', ratio: 1 };
+test('M07: arm up, drive in, lower the arm onto it, drive back: the mycelium extends', () => {
+  const arm = { id: 'a1', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'up', cw: 'lowers', ratio: 1 };
+  const steps = (back) => [['move', { dir: 'forward', val: '20', unit: 'cm' }], ['motor', { port: 'E', dir: 'clockwise', val: '90', unit: 'degrees' }], ['move', { dir: 'back', val: String(back), unit: 'cm' }]];
   const s = new Sim({ arms: [arm] }, { x: 1582, y: 760, h: 0 }, []);
-  runToEnd(s, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }], ['motor', { port: 'E', dir: 'clockwise', val: '60', unit: 'degrees' }]]));
+  runToEnd(s, prog(steps(10)));
   assert.equal(s.mission.m07a, true);
   assert.ok(s.objects.find(o => o.key === 'm07').done);
-  // Driving the same arm into it without raising it does nothing for M07.
+  // Not pulled far enough.
+  const short = new Sim({ arms: [arm] }, { x: 1582, y: 760, h: 0 }, []);
+  runToEnd(short, prog(steps(2)));
+  assert.notEqual(short.mission.m07a, true);
+  // Driving back without lowering the arm onto it does nothing.
   const t = new Sim({ arms: [arm] }, { x: 1582, y: 760, h: 0 }, []);
-  runToEnd(t, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
+  runToEnd(t, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }], ['move', { dir: 'back', val: '10', unit: 'cm' }]]));
   assert.notEqual(t.mission.m07a, true);
 });
