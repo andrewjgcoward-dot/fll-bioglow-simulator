@@ -495,7 +495,7 @@ function renderRobot() {
     <div class="section-h">Robot layout</div>
     <div class="fine">Drag the wheels, color sensor (circle), distance sensor (eyes) and arms (orange, blue pivot). Tap a part to change it. Each grid square is 1 LEGO stud (8 mm).</div>
     <svg id="robot-editor" viewBox="${-REACH} ${-REACH} ${REACH * 2} ${REACH * 2}" role="img" aria-label="Top view of the robot. Drag parts to place them."></svg>
-    <div class="row"><button type="button" class="btn small" data-add-arm>Add arm</button><button type="button" class="btn small" data-share-robot>Share this robot</button><span class="muted" id="ed-pos"></span></div>
+    <div class="row"><button type="button" class="btn small" data-add-arm>Add arm</button><button type="button" class="btn small" data-share-robot>Share this robot</button><button type="button" class="btn small red" data-reset-robot>Reset robot</button><span class="muted" id="ed-pos"></span></div>
     <div id="part-props" class="props"></div>
 
     <div class="section-h">Drive base</div>
@@ -650,6 +650,15 @@ $('tab-robot').addEventListener('click', (e) => {
   const apply = e.target.closest('[data-apply]');
   if (apply) { calibrate(Number(apply.dataset.apply)); return; }
   if (e.target.closest('[data-share-robot]')) { shareRobot(); return; }
+  if (e.target.closest('[data-reset-robot]')) {
+    if (!confirm('Reset the robot to the starting design? This replaces the wheels, sizes, sensors, arms and ports. To keep this one, tap “Share this robot” first and save the link.')) return;
+    sim.stop();
+    for (const k of Object.keys(state.cfg)) delete state.cfg[k];
+    Object.assign(state.cfg, normalizeConfig({}));
+    state.sel = 'color'; save(); sim.reset(); renderRobot(); drawField();
+    showMsg('Robot reset to the starting design.');
+    return;
+  }
   if (e.target.closest('[data-add-arm]')) {
     const used = new Set(state.cfg.arms.map(a => a.port).concat(state.cfg.pair.split(''), [state.cfg.colorPort, state.cfg.distPort]));
     const port = ['E', 'F', 'D', 'C', 'B', 'A'].find(p => !used.has(p)) || 'F';
