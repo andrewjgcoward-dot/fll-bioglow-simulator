@@ -138,15 +138,20 @@ function buildField() {
   refs.beam = svgEl('line',{ stroke: 'rgba(143,227,176,.6)', 'stroke-width': 4, 'pointer-events': 'none' }, field);
   refs.robot = svgEl('g', { 'pointer-events': 'none' }, field);
   const style = svgEl('style', {}, field);
-  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 24px "JetBrains Mono",monospace;fill:#F2C48A} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A} .arm-l{font:700 20px "JetBrains Mono",monospace;fill:#fff} .hint-l{font:700 22px "JetBrains Mono",monospace}';
+  style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 32px "JetBrains Mono",monospace;fill:#FFE3A6} .dock-s{font:700 20px "JetBrains Mono",monospace;fill:#FFFFFF} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A} .arm-l{font:700 20px "JetBrains Mono",monospace;fill:#fff} .hint-l{font:700 22px "JetBrains Mono",monospace}';
 }
 
 // Mission models, docks and loose pieces come from the simulation, since they can move.
 function drawObject(o) {
   const g = svgEl('g', {});
   if (o.dock) {
-    svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 8, fill: 'rgba(242,196,138,.18)', stroke: '#F2C48A', 'stroke-width': 4, 'stroke-dasharray': '12 8' }, g);
-    g.label = svgEl('text', { 'text-anchor': 'middle', y: 8, class: 'dock-l' }, g); g.label.textContent = o.holds.replace('M', '') + ' ' + o.key;
+    // Dark plate with a bright double outline so docks stand out on the busy mat photo.
+    svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 10, fill: 'rgba(16,12,6,.72)', stroke: '#1A1208', 'stroke-width': 12 }, g);
+    svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 10, fill: 'none', stroke: '#FFD27A', 'stroke-width': 5, 'stroke-dasharray': '16 8' }, g);
+    g.label = svgEl('g', {}, g);
+    const big = svgEl('text', { 'text-anchor': 'middle', y: 4, class: 'dock-l' }, g.label); big.textContent = o.holds;
+    const small = svgEl('text', { 'text-anchor': 'middle', y: 28, class: 'dock-s' }, g.label); small.textContent = o.key;
+    svgEl('title', {}, g).textContent = `${o.holds} on the ${o.name}`;
     return g;
   }
   const shape = o.round ? svgEl('ellipse', { rx: o.w / 2, ry: o.h / 2 }, g) : svgEl('rect', { x: -o.w / 2, y: -o.h / 2, width: o.w, height: o.h, rx: 6 }, g);
