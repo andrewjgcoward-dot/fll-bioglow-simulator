@@ -8,7 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232D5A3B'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%238FE3B0'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2026-10-01m">
+<link rel="stylesheet" href="style.css?v=2026-10-01n">
 </head>
 <body>
 <header class="top">
@@ -69,10 +69,35 @@
       <button type="button" role="tab" data-tab="code" aria-selected="true">Code</button>
       <button type="button" role="tab" data-tab="score" aria-selected="false">Score · <span id="total-tab">0</span></button>
       <button type="button" role="tab" data-tab="robot" aria-selected="false">Robot</button>
+      <button type="button" role="tab" data-tab="field" aria-selected="false">Field</button>
     </div>
     <div id="tab-code" role="tabpanel"></div>
     <div id="tab-score" role="tabpanel" hidden></div>
     <div id="tab-robot" role="tabpanel" hidden></div>
+    <div id="tab-field" role="tabpanel" hidden>
+      <div class="section-h">Mat</div>
+      <div class="seg" id="mat-style" aria-label="Mat look">
+        <button type="button" data-mat="photo" aria-pressed="true">Photo</button>
+        <button type="button" data-mat="plain" aria-pressed="false">Plain</button>
+      </div>
+      <div class="fine">The photo is the official BioGlow mat, from the Robot Game Rulebook. The color sensor still sees the simulator’s colors: black lines, white home areas and models.</div>
+      <label class="check"><input type="checkbox" id="grid"> Show the 20 cm wireframe grid</label>
+
+      <div class="section-h">Missions 13–15 docks</div>
+      <div id="dock-selects" class="form-grid"></div>
+
+      <div class="section-h">Hints</div>
+      <label class="check"><input type="checkbox" id="hints"> Show what to do on each model</label>
+      <label class="check"><input type="checkbox" id="sides"> Show approach directions</label>
+      <div class="fine">Tap a model on the mat to see its mission and points. Coaches set approach sides in a model’s card.</div>
+
+      <div class="section-h">Loose pieces</div>
+      <div class="row">
+        <button id="add-piece" class="btn small" type="button">Add piece</button>
+        <button id="reset-pieces" class="btn small" type="button">Reset pieces</button>
+      </div>
+      <div class="fine">Drag the purple pieces on the mat. The robot pushes them around.</div>
+    </div>
   </section>
 
   <section class="field-col">
@@ -125,29 +150,6 @@
       <span class="muted" id="pos"></span>
     </div>
 
-    <div class="start" id="mat-row">
-      <strong>Mat</strong>
-      <div class="seg" id="mat-style" aria-label="Mat look">
-        <button type="button" data-mat="photo" aria-pressed="true">Photo</button>
-        <button type="button" data-mat="plain" aria-pressed="false">Plain</button>
-      </div>
-      <span class="muted">The photo is the official BioGlow mat, from the Robot Game Rulebook. The color sensor still sees the simulator’s colors: black lines, white home areas and models.</span>
-    </div>
-
-    <div class="start" id="docks-row">
-      <strong>Missions 13–15</strong>
-      <span id="dock-selects" class="row"></span>
-      <label class="check"><input type="checkbox" id="hints"> Show what to do on each model</label>
-      <label class="check"><input type="checkbox" id="sides"> Show approach directions</label>
-    </div>
-
-    <div class="start">
-      <strong>Loose pieces</strong>
-      <button id="add-piece" class="btn small" type="button">Add piece</button>
-      <button id="reset-pieces" class="btn small" type="button">Reset pieces</button>
-      <span class="muted">Drag the purple pieces on the mat. The robot pushes them around.</span>
-    </div>
-
     <div id="log" class="log" aria-live="polite"></div>
   </section>
 </main>
@@ -162,7 +164,7 @@
   // Every module gets the release version in its URL, so a browser never mixes old and new files
   // after an update. Bump VERSION (and the stylesheet's ?v=) with each release.
   (function () {
-    var VERSION = '2026-10-01m';
+    var VERSION = '2026-10-01n';
     var files = ['app', 'sim', 'blocks', 'blocks-json', 'workspace', 'spike-io', 'robot-view', 'field', 'github', 'share'];
     var map = { imports: {} };
     files.forEach(function (f) { map.imports['./src/' + f + '.js'] = './src/' + f + '.js?v=' + VERSION; });

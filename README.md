@@ -28,7 +28,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **What to do on each model:** a tag above each model says how the simulator scores it (PUSH, PRESS, HOLD, DON'T TOUCH, BRING K, BRING SEEDS). Tags turn green when done and red when a habitat is disturbed. Tap a model to see its mission, the scoring items and the points. The tags can be turned off.
 - **Mat look:** the official mat photo (default) or a plain green drawing.
 - **Approach sides (coach setting):** in a model's card, a coach can require pushes to come from one side of the mat (north, south, east or west, within 55°). A push from another side does nothing, and the log only says "touched, but nothing happened". Kids see arrows only if "Show approach directions" is turned on. Settings are saved on the device and travel in share links. No sides are set by default; confirmed sides go in `DEFAULT_APPROACH` in `src/field.js`.
-- **Missions 13–15 docks:** choose which model sits on the mine, farm and city docks under the mat (or on the Score tab).
+- **Missions 13–15 docks:** choose which model sits on the mine, farm and city docks on the Field tab (or on the Score tab).
 - **Mission models that react (simplified):** pushing or pressing the right model completes it. Examples: the M01 pilot launches the drone, M02 drops seeds you can collect, M03's flag goes down, sliding a low lift arm under M12's cane and lifting it fast flips the cane up against the tree (too slow and it falls back), pushing the M06 ant into the nest keeps more leaf fragments the slower it goes, hooking a lift arm onto M07 and driving backwards extends the mycelium, and touching an M10 habitat loses those points. The keystone species counts for M13 when it's pushed into the M13 dock, and seeds count for M14 in the M14 dock. Choose which dock (mine, farm, city) holds M13, M14 and M15. The score sheet can fill these in automatically.
 - **SPIKE files:**
   - **Import:** reads `.llsp3` Word Blocks projects. Drive motors and sensor ports are read from the program. Blocks the simulator can't run yet show up in gray.
@@ -100,7 +100,7 @@ The block editor is [Blockly](https://github.com/google/blockly) 11.2.2 (Apache 
 
 - Mission names and point values come from the official 2026–27 BioGlow Robot Game Rulebook. Check the FIRST Challenge Updates for changes during the season.
 - Model positions were traced from the public field wireframe and may be off by a few centimetres. Fix them in `src/field.js`.
-- The mat photo (`assets/mat.jpg`) is cropped from the field photo in the official Robot Game Rulebook. It is © FIRST and the LEGO Group and is used here only as a practice backdrop. Choose **Plain** under the mat for the drawn version.
+- The mat photo (`assets/mat.jpg`) is cropped from the field photo in the official Robot Game Rulebook. It is © FIRST and the LEGO Group and is used here only as a practice backdrop. Choose **Plain** on the Field tab for the drawn version.
 - Sensor readings are simplified. The mat is treated as green, home as white, the home borders as red and blue, and the printed lines as black.
 
 FIRST®, FIRST® LEGO® League and BIOGLOW™ are trademarks of FIRST and the LEGO Group. LEGO®, SPIKE™ and LEGO Education are trademarks of the LEGO Group. This project is not affiliated with or endorsed by either.

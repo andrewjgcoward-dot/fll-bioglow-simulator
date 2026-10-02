@@ -297,7 +297,7 @@ function showMissionCard(o) {
     ${acts.map(a => `<div class="mc-do">${a.done ? '✓ ' : a.bad ? '✗ ' : ''}<b>${esc(a.label)}</b>: ${esc(a.tip)}${a.result ? ' <span class="muted">→ ' + esc(a.result) + '</span>' : ''}</div>`).join('')
       || '<div class="mc-do">The simulator doesn’t model this one yet: score it yourself on the Score tab.</div>'}
     ${ms.map(m => `<div><span class="mid">${m.id}</span><b>${esc(m.name)}</b> · ${missionPoints(m, state.score)} pts now<ul>${m.items.map(it => `<li class="${state.score[it.k] ? 'done' : ''}">${esc(it.label)} — ${it.zero ? '×0' : it.count ? it.pts + ' each' : it.pts}</li>`).join('')}</ul></div>`).join('')}
-    ${dock ? '<div class="fine">Change which model sits here under “Missions 13–15” below the mat.</div>' : ''}
+    ${dock ? '<div class="fine">Change which model sits here on the Field tab.</div>' : ''}
     ${MECHANISMS.some(m => m.how === 'push' && (m.model || 'dock:' + m.dock) === modelKey(o)) ? `<details><summary>Coach: which side must the robot push from?</summary>
       <div class="fine">Set this from the real model. A push from any other side does nothing (the log only says “touched, but nothing happened”). Kids only see the direction if “Show approach directions” is on. Saved on this device and included in share links.</div>
       <div class="seg" data-approach="${esc(modelKey(o))}">${Object.entries(SIDE_NAMES).map(([k, label]) => `<button type="button" data-side="${k}" aria-pressed="${(state.approach[modelKey(o)] || 'any') === k}">${esc(label)}</button>`).join('')}</div>
@@ -331,11 +331,12 @@ function setDock(dockKey, model) {
 function renderDocks() {
   $('dock-selects').innerHTML = DOCKS.map(d => `<label>${esc(d.name[0].toUpperCase() + d.name.slice(1))}
     <select data-dock="${d.key}">${DOCK_MODELS.map(m => `<option value="${m}"${state.docks[d.key] === m ? ' selected' : ''}>${m} ${esc(missionName(m))}</option>`).join('')}</select></label>`).join('');
-  $('hints').checked = state.hints; $('sides').checked = state.showSides;
+  $('hints').checked = state.hints; $('sides').checked = state.showSides; $('grid').checked = state.grid;
 }
 $('dock-selects').addEventListener('change', (e) => { if (e.target.dataset.dock) setDock(e.target.dataset.dock, e.target.value); });
 $('hints').onchange = (e) => { state.hints = e.target.checked; save(); drawField(); };
 $('sides').onchange = (e) => { state.showSides = e.target.checked; save(); drawField(); };
+$('grid').onchange = (e) => { state.grid = e.target.checked; save(); drawField(); };
 
 function setMat(look) {
   state.mat = look;
@@ -532,7 +533,6 @@ function renderRobot() {
     <label class="check"><input type="checkbox" data-cfgbool="yawCW"${c.yawCW ? ' checked' : ''}>Yaw angle increases when turning clockwise</label>
     <label class="check"><input type="checkbox" data-cfgbool="collide"${c.collide ? ' checked' : ''}>Models and pieces are solid (off: drive through everything)</label>
     <label class="check"><input type="checkbox" data-cfgbool="shove"${c.shove ? ' checked' : ''}>Robot can shove fixed mission models (just for fun; real ones are held down)</label>
-    <label class="check"><input type="checkbox" data-grid${state.grid ? ' checked' : ''}>Show the 20 cm wireframe grid</label>
     <div class="fine">Importing a SPIKE file sets the drive motors and sensor ports from its blocks. Arms push loose pieces and stop when they press on a model or the mat. Model positions are traced from the wireframe and are approximate.</div>`;
   renderEditor(); renderProps();
 }
@@ -631,7 +631,6 @@ $('tab-robot').addEventListener('change', (e) => {
   else if (t.dataset.cfgnum) { const k = t.dataset.cfgnum, v = parseFloat(t.value); if (isFinite(v) && (v > 0 || (k === 'ramp' && v === 0))) state.cfg[k] = v; }
   else if (t.dataset.cfg) state.cfg[t.dataset.cfg] = t.value;
   else if (t.dataset.cfgbool) state.cfg[t.dataset.cfgbool] = t.checked;
-  else if (t.hasAttribute('data-grid')) state.grid = t.checked;
   else if (t.dataset.pp && part) {
     const k = t.dataset.pp;
     if (['x', 'y', 'len'].includes(k)) {
@@ -710,7 +709,7 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tab]'); if (!b) return;
   state.tab = b.dataset.tab;
   document.querySelectorAll('.tabs [data-tab]').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === state.tab)));
-  for (const t of ['code', 'score', 'robot']) $('tab-' + t).hidden = t !== state.tab;
+  for (const t of ['code', 'score', 'robot', 'field']) $('tab-' + t).hidden = t !== state.tab;
   if (state.tab === 'code' && ws) window.Blockly.svgResize(ws);
 });
 

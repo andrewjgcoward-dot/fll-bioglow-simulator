@@ -82,7 +82,7 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
   .panel { max-height: none; }
 }
 
-.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; background: var(--bg); padding: 4px; border-radius: 12px; }
+.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; background: var(--bg); padding: 4px; border-radius: 12px; }
 .tabs button { min-height: 44px; border: none; border-radius: 9px; font-weight: 700; font-size: 14px; cursor: pointer; background: transparent; color: var(--text-2); }
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--bg); }
 
@@ -134,10 +134,9 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 .start label { display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
 .start input { width: 80px; min-height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); }
 .start .muted { flex-grow: 1; min-width: 160px; align-self: center; }
-#docks-row { align-items: center; }
-#docks-row select { min-height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg); color: var(--text); }
-#docks-row .check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
-#docks-row .check input { width: 20px; height: 20px; min-height: 0; padding: 0; accent-color: var(--accent); }
+#tab-field { display: flex; flex-direction: column; gap: 10px; }
+#tab-field .section-h { margin-top: 8px; }
+#tab-field .seg { align-self: flex-start; }
 .mission-card { padding: 12px 14px; border-radius: 12px; background: var(--panel); border: 1px solid #6B5A3A; font-size: 14px; }
 .mission-card .mc-head { display: flex; gap: 8px; align-items: center; }
 .mission-card .mc-head strong { flex-grow: 1; }
