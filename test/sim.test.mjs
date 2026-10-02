@@ -434,15 +434,27 @@ test('pushing M02 pops seeds; seeds pushed into the M14 dock count', () => {
   assert.equal(sim.mission.m14a, 1);
 });
 
-test('a low lift arm raised against M12 lifts the cane; pressing down does not', () => {
-  // M12 is at (1940, 758): sit just below it facing up, arm flat on the mat touching it.
+test('M12: slide a low arm under the cane and lift fast to flip it up; slow lifts and presses fail', () => {
+  // The cane lies at x 1940 from y 795 to 955. Come from the west, arm flat, and slide under it.
   const arm = { id: 'a', port: 'E', motion: 'lift', x: 0, y: 100, dir: 'front', len: 90, rest: 'down', cw: 'raises', ratio: 1 };
+  const run = (speed, cfgArm = arm) => {
+    const s = new Sim({ arms: [cfgArm] }, { x: 1700, y: 880, h: 90 }, []);
+    runToEnd(s, prog([['move', { dir: 'forward', val: '8', unit: 'cm' }], ['motorSpeed', { port: 'E', pct: String(speed) }], ['motor', { port: 'E', dir: 'clockwise', val: '60', unit: 'degrees' }]]));
+    return s;
+  };
+  const fast = run(100);
+  assert.ok(!fast.logLines.some(l => l.startsWith('Bumped')), 'the low arm slides under the cane');
+  assert.equal(fast.mission.m12a, true);
+  assert.ok(fast.objects.find(o => o.key === 'm12cane').lifted);
+  const slow = run(30);
+  assert.notEqual(slow.mission.m12a, true);
+  assert.ok(slow.logLines.some(l => l === 'M12: it lifted a little and fell back down.'));
+  // Gearing the arm down makes the same motor speed too slow.
+  assert.notEqual(run(100, { ...arm, ratio: 1 / 3 }).mission.m12a, true);
+  // Pressing down on the tree does nothing.
   const press = new Sim({ arms: [{ ...arm, rest: 'up', cw: 'lowers' }] }, { x: 1940, y: 560, h: 0 }, []);
   runToEnd(press, prog([['motor', { port: 'E', dir: 'clockwise', val: '90', unit: 'degrees' }]]));
   assert.notEqual(press.mission.m12a, true);
-  const sim = new Sim({ arms: [arm] }, { x: 1940, y: 530, h: 0 }, []);
-  runToEnd(sim, prog([['motor', { port: 'E', dir: 'clockwise', val: '60', unit: 'degrees' }]]));
-  assert.equal(sim.mission.m12a, true);
 });
 
 test('reads deflate-compressed files like the SPIKE app writes', async () => {

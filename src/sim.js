@@ -207,7 +207,7 @@ export class Sim {
     const key = k + '|' + how;
     if (!this.contacts.has(key)) this.contacts.set(key, []);
     if (dir) this.contacts.get(key).push(dir);
-    if (how === 'push') this.contactSpeed.set(key, Math.max(this.contactSpeed.get(key) || 0, this.pushSpeed ?? this.driveSpeedPct()));
+    if (how === 'push' || how === 'lift') this.contactSpeed.set(key, Math.max(this.contactSpeed.get(key) || 0, this.pushSpeed ?? this.driveSpeedPct()));
   }
 
   // How fast the wheels are turning, as a percentage of top speed.
@@ -230,6 +230,10 @@ export class Sim {
       const k = m.model || 'dock:' + m.dock;
       let hit = m.how === 'touch' ? [...now.keys()].some(c => c.startsWith(k + '|')) : now.has(k + '|' + m.how);
       if (hit && m.pull && (this.pullDist[k] || 0) < m.pull) hit = false; // not pulled far enough yet
+      if (hit && m.fast && (speeds.get(k + '|lift') || 0) < m.fast) {
+        hit = false; // lifted too slowly: it rises a little and falls back
+        if (!this.mechDone.has(i) && !this.missed.has('fall:' + k)) { this.missed.add('fall:' + k); this.log(m.says.split(':')[0] + ': it lifted a little and fell back down.'); }
+      }
       if (hit && !this.rightSide(m, now.get(k + '|' + m.how))) {
         hit = false; // pushed from the wrong side: the real lever wouldn't move
         if (!this.mechDone.has(i) && !this.missed.has(m.model || m.dock)) { this.missed.add(m.model || m.dock); this.log(m.says.split(':')[0] + ': touched, but nothing happened.'); }
@@ -289,7 +293,7 @@ export class Sim {
     if ((touching && !g.solid) || g.proj < 5) return null;
     const a = rad(g.ang);
     const [x, y] = this.toWorld(p, arm.x + Math.sin(a) * g.proj / 2, arm.y + Math.cos(a) * g.proj / 2);
-    return { x, y, w: ARM_WIDTH, h: g.proj, r: p.h + g.ang, part: 'arm ' + arm.port };
+    return { x, y, w: ARM_WIDTH, h: g.proj, r: p.h + g.ang, part: 'arm ' + arm.port, lift: arm.motion !== 'sweep' };
   }
 
   solidBoxes(p) {
@@ -315,7 +319,7 @@ export class Sim {
     const moved = [];
     const undo = () => { for (const [o, s] of moved) Object.assign(o, s); };
     for (const box of boxes) for (const o of this.objects) {
-      if (o.lifted) continue;
+      if (o.lifted || (box.lift && o.under)) continue; // a low lift arm slides under flat parts
       const m = mtv(box, o); if (!m) continue;
       this.touch(o, 'push', m.axis);
       if (!this.pushable(o)) { undo(); return o.name; }
@@ -348,12 +352,16 @@ export class Sim {
     if (!arm) return null;
     const g = armGeom(arm, motorDeg);
     if (arm.motion !== 'sweep' && (g.raw < -0.01 || g.raw > 90.01)) return g.raw < 0 ? 'the mat' : 'its top stop';
-    // A low lift arm that rises while hooked against a model lifts (or pulls) that model's handle.
+    // A low lift arm that rises right against a model (or under a flat part) lifts it.
+    const was = armGeom(arm, this.arms[port] || 0), rising = arm.motion !== 'sweep' && g.tilt > was.tilt;
     if (arm.motion !== 'sweep' && this.cfg.collide) {
-      const was = armGeom(arm, this.arms[port] || 0), hook = this.armBox(this.pose, arm, this.arms[port] || 0);
-      if (hook && g.tilt > was.tilt) {
+      const hook = this.armBox(this.pose, arm, this.arms[port] || 0);
+      if (hook && rising) {
         const reach = Object.assign({}, hook, { w: hook.w + 2 * HOOK, h: hook.h + 2 * HOOK });
+        // How fast the arm itself rises, as a % of top speed (gearing included).
+        this.pushSpeed = Math.round(Math.abs(this.motorSpeed[port] ?? 75) * Math.abs(arm.ratio || 1));
         for (const o of this.objects) if (!o.lifted && !o.loose && overlap(reach, o)) this.touch(o, 'lift');
+        this.pushSpeed = null;
       }
       if (g.tilt > was.tilt) delete this.resting[port]; // raising the arm unhooks it
     }
@@ -365,7 +373,7 @@ export class Sim {
     }
     // A lift arm coming down presses on whatever is under it instead of shoving it aside.
     for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
-    if (this.cfg.collide) for (const o of this.objects) if (!o.lifted && overlap(box, o)) {
+    if (this.cfg.collide) for (const o of this.objects) if (!o.lifted && !(rising && o.under) && overlap(box, o)) {
       this.touch(o, 'press');
       if (!o.loose && !o.dock) this.resting[port] = o; // resting on the model: driving away now pulls it
       return o.name;
@@ -389,7 +397,7 @@ export class Sim {
   collides(p) {
     for (const box of this.solidBoxes(p)) {
       for (const q of corners(box)) if (q[0] < 0 || q[0] > FW || q[1] < 0 || q[1] > FH) return 'the wall';
-      if (this.cfg.collide) for (const o of this.objects) if (overlap(box, o)) return o.name;
+      if (this.cfg.collide) for (const o of this.objects) if (!(box.lift && o.under) && overlap(box, o)) return o.name;
     }
     return null;
   }
@@ -413,7 +421,7 @@ export class Sim {
     if (f[0] < -1e-9) t = Math.min(t, -o[0] / f[0]);
     if (f[1] > 1e-9) t = Math.min(t, (FH - o[1]) / f[1]);
     if (f[1] < -1e-9) t = Math.min(t, -o[1] / f[1]);
-    for (const b of this.objects || []) { if (b.lifted) continue; const h = rayBox(o, f, b); if (h !== null) t = Math.min(t, h); }
+    for (const b of this.objects || []) { if (b.lifted || b.under) continue; const h = rayBox(o, f, b); if (h !== null) t = Math.min(t, h); } // flat parts on the mat (b.under) are below the beam
     let yaw = p.h - (this.yawZero === undefined ? p.h : this.yawZero);
     yaw = ((yaw % 360) + 540) % 360 - 180;
     if (!c.yawCW) yaw = -yaw;

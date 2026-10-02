@@ -28,7 +28,10 @@ export const MODELS = [
   { key: 'm07', n: '07', name: 'M07 Humongous Fungus', x: 1582, y: 1072, w: 79, h: 120, r: 0 },
   { key: 'm11', n: '11', name: 'M11 Window to the Past', x: 1406, y: 594, w: 80, h: 80, r: 45 },
   { key: 'm12', n: '12', name: 'M12 Forest Elder', x: 1940, y: 758, w: 73, h: 73, r: 0, round: true },
-  { key: 'm12post', n: '12', name: 'M12 Forest Elder post', x: 1940, y: 538, w: 25, h: 45, r: 0 }
+  { key: 'm12post', n: '12', name: 'M12 Forest Elder post', x: 1940, y: 538, w: 25, h: 45, r: 0 },
+  // The cane lies flat on the mat, hinged at the bottom of the tree and pointing away from home.
+  // under: a low lift arm can slide beneath it.
+  { key: 'm12cane', n: '', name: 'M12 cane (hinged at the tree, lying on the mat)', x: 1940, y: 875, w: 18, h: 160, r: 0, under: true }
 ];
 
 // Interchangeable docks for missions 13-15. Which dock is which comes from the mat art and the
@@ -96,6 +99,7 @@ export function totalScore(score, tokens, inspection) {
 // "sets" are score sheet items the action completes. "hold" needs that many seconds of pushing.
 // "fragments" scores that many pieces for a slow push and fewer for a fast one (M06's leaves scatter).
 // "pull" needs the robot to drag the hooked arm that many mm.
+// "fast" needs the arm to rise at least that fast (% of top speed, after gearing), or the part falls back.
 // A push can also be required to come from one side of the mat (see APPROACH); the default is any side.
 export const MECHANISMS = [
   { id: 'm01-pilot', model: 'm01pilot', how: 'push', sets: ['m01a'], says: 'M01: the pilot launched the drone.', lifts: 'm01drone' },
@@ -112,7 +116,7 @@ export const MECHANISMS = [
   { id: 'm10-spider', model: 'm10spider', how: 'touch', clears: ['m10a'], says: 'M10: the spider habitat was disturbed.' },
   { id: 'm10-snail', model: 'm10snail', how: 'touch', clears: ['m10b'], says: 'M10: the snail habitat was disturbed.' },
   { id: 'm11-cover', model: 'm11', how: 'push', sets: ['m11'], says: 'M11: the root cover is down.' },
-  { id: 'm12-cane', model: 'm12', how: 'lift', sets: ['m12a'], says: 'M12: the cane is raised.' },
+  { id: 'm12-cane', model: 'm12cane', how: 'lift', fast: 70, lifts: 'm12cane', sets: ['m12a'], says: 'M12: the cane flipped up against the tree.' },
   { id: 'm15-canopy', dock: 'M15', how: 'press', sets: ['m15a'], says: 'M15: the nesting canopy is raised.' },
   { id: 'm15-hatch', dock: 'M15', how: 'push', sets: ['m15c'], says: 'M15: the compost hatch is open.' }
 ];

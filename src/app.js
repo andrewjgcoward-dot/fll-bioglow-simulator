@@ -221,11 +221,11 @@ function drawField() {
 const HOW = {
   push: ['PUSH', 'Drive the robot into it, or swing a sweep arm into it.'],
   press: ['PRESS', 'Bring a lift arm down on top of it.'],
-  lift: ['LIFT', 'Get a lift arm low, right against it, then raise the arm.'],
+  lift: ['LIFT', 'Get a lift arm low, right against it (or under it), then raise the arm.'],
   pull: ['HOOK & PULL', 'Raise a lift arm, drive up, lower the arm onto it (behind the handle), then drive backwards.'],
   touch: ['DON’T TOUCH', 'Leave it alone: it scores only if nothing touches it.']
 };
-const missionIds = (o) => o.dock ? [o.holds] : (o.n || '').split(' ').filter(Boolean).map(n => 'M' + n);
+const missionIds = (o) => o.dock ? [o.holds] : ((o.n || (o.name.match(/^M(\d+)/) || [])[1] || '')).split(' ').filter(Boolean).map(n => n.startsWith('M') ? n : 'M' + n);
 
 // The simulated actions on a model or dock: [{ label, tip, done, bad }].
 function actionsOf(o) {
@@ -249,6 +249,7 @@ function drawHints() {
   const key = show + '|' + state.showSides + JSON.stringify(state.approach) + '|' + objs.map(o => [o.key || o.id, Math.round(o.x), Math.round(o.y), actionsOf(o).map(a => a.label + a.done + a.bad)].join()).join(';');
   if (key === refs.hintKey) return;
   refs.hintKey = key; refs.hints.textContent = '';
+  const placed = [];
   for (const o of objs) {
     const acts = actionsOf(o);
     const text = acts.map(a => (a.done ? '✓ ' : a.bad ? '✗ ' : '') + a.label).join(' · ');
@@ -257,7 +258,11 @@ function drawHints() {
     const reach = Math.hypot(o.w, o.h) / 2 + 24;
     const below = o.y + reach + h > FH;
     const cx = Math.max(w / 2 + 4, Math.min(FW - w / 2 - 4, o.x));
-    const cy = Y(below ? o.y - reach : o.y + reach);
+    let cy = Y(below ? o.y - reach : o.y + reach);
+    // Step away from tags already placed (neighbouring models), in the same direction.
+    const hits = (y) => placed.some(q => Math.abs(q.x - cx) < (q.w + w) / 2 + 4 && Math.abs(q.y - y) < h + 4);
+    for (let n = 0; n < 6 && hits(cy); n++) cy += below ? h + 6 : -(h + 6);
+    placed.push({ x: cx, y: cy, w });
     const g = svgEl('g', { transform: `translate(${cx.toFixed(0)} ${cy.toFixed(0)})` }, refs.hints);
     svgEl('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: 17, fill: bad ? '#9B2C24' : done ? '#1E7A45' : '#3B2F1E', stroke: bad ? '#F2A6A0' : done ? '#8FE3B0' : '#F2C48A', 'stroke-width': 3, opacity: .95 }, g);
     const t = svgEl('text', { y: 8, 'text-anchor': 'middle', class: 'hint-l', fill: bad ? '#FFE3E0' : done ? '#E6FFF0' : '#F2C48A' }, g);
