@@ -2,8 +2,9 @@ import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, 
 import { PORTS, PAIRS, DEMO, flatToAst, emptyProgram } from './blocks.js';
 import { programToJson, jsonToProgram } from './blocks-json.js';
 import { createWorkspace, registerNames, foldingToolbox } from './workspace.js';
-import { Sim, normalizeConfig, LOOSE_DEFAULTS, inside, calibrateWheel, calibrateTrack, calibrateTop } from './sim.js';
+import { Sim, normalizeConfig, migrateArmHome, LOOSE_DEFAULTS, inside, calibrateWheel, calibrateTrack, calibrateTop } from './sim.js';
 import { drawRobot } from './robot-view.js';
+import { createRobot3D } from './robot-3d.js';
 import { photoSampler } from './mat-photo.js';
 import { importProject, exportLlsp3 } from './spike-io.js';
 import { parseRepo, listProjects, fetchProject } from './github.js';
@@ -27,7 +28,7 @@ function load() {
   } catch { /* storage unavailable or unreadable */ }
   return {};
 }
-const saved = load();
+const saved = migrateArmHome(load());
 const state = {
   tab: 'code',
   program: saved.program && saved.program.stacks ? saved.program : demoProgram(),
@@ -45,7 +46,7 @@ const state = {
 function save() {
   try {
     localStorage.setItem(STORE, JSON.stringify({
-      program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
+      robotHomeVersion: 2, program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
       score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks, hints: state.hints, approach: state.approach, showSides: state.showSides, mat: state.mat
     }));
   } catch { /* storage unavailable: keep working without it */ }
@@ -55,6 +56,7 @@ const sim = new Sim(state.cfg, state.start, state.pieces);
 sim.cfg = state.cfg; // share the object so Robot tab edits apply immediately
 sim.docks = state.docks; sim.approach = state.approach; sim.reset();
 sim.onLog = () => renderLog();
+const robot3D = createRobot3D($('robot-3d'), sim);
 
 // ---------- hub: light matrix, center light, buttons, variables, sound ----------
 
@@ -181,6 +183,7 @@ function syncObjects() {
 }
 
 function drawField() {
+  robot3D.update();
   const p = sim.pose, s = sim.sens;
   syncObjects();
   syncMission();
@@ -662,6 +665,7 @@ $('tab-robot').addEventListener('change', (e) => {
     if (t.value !== 'custom') { state.cfg.wheel = Number(t.value); const i = $('tab-robot').querySelector('[data-cfgnum="wheel"]'); if (i) i.value = state.cfg.wheel; }
   }
   else if (t.dataset.cfgnum) { const k = t.dataset.cfgnum, v = parseFloat(t.value); if (isFinite(v) && (v > 0 || (k === 'ramp' && v === 0))) state.cfg[k] = v; }
+  else if (t.dataset.cfg === 'pair') sim.configureDrivePair(t.value);
   else if (t.dataset.cfg) state.cfg[t.dataset.cfg] = t.value;
   else if (t.dataset.cfgbool) state.cfg[t.dataset.cfgbool] = t.checked;
   else if (t.dataset.pp && part) {

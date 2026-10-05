@@ -36,6 +36,15 @@ export function normalizeConfig(saved) {
   return cfg;
 }
 
+// Versioned migration restoring the original raised default home. Preserve custom geometry,
+// gearing, wiring and program data; later explicit home-position edits survive reload.
+export function migrateArmHome(saved = {}) {
+  if (saved.robotHomeVersion >= 2) return saved;
+  const cfg = normalizeConfig(structuredClone(saved.cfg));
+  cfg.arms = (cfg.arms || []).map(arm => arm.motion === 'sweep' ? arm : { ...arm, rest: 'up' });
+  return { ...saved, cfg, robotHomeVersion: 2 };
+}
+
 // Where an arm points (degrees clockwise from the robot's front), how long it looks from above,
 // and whether it is low enough to touch things, for a given motor angle.
 export function armGeom(arm, motorDeg) {
@@ -455,6 +464,11 @@ export class Sim {
       this.yawZero = this.pose.h;
     }
     this.stopMotion();
+    // A relaunch is an explicit preparation boundary, like putting the hoop
+    // back at home on the real robot. Stop and normal motion never re-home it.
+    if (this.matchOn) for (const arm of this.cfg.arms || []) {
+      if (arm.motion !== 'sweep') { this.arms[arm.port] = 0; this.relZero[arm.port] = 0; }
+    }
     this.program = program;
     this.vars = {}; for (const v of program.vars || []) this.vars[v] = 0;
     this.lists = {}; for (const l of program.lists || []) this.lists[l] = [];
@@ -533,6 +547,13 @@ export class Sim {
     this.driveAction = null;
     for (const a of Object.values(this.motorActions || {})) a.done = true;
     this.motorActions = {}; this.motorRun = {};
+  }
+
+  // A Robot-tab edit applies immediately while idle. During a run, keep the
+  // pair chosen by the running program; the new wiring applies next launch.
+  configureDrivePair(pair) {
+    this.cfg.pair = String(pair);
+    if (!this.running) this.pair = this.cfg.pair;
   }
 
   finish(msg) { this.running = false; this.stopMotion(); this.sound({ type: 'stop' }); this.log(msg); }

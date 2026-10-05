@@ -76,6 +76,15 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 .app { display: grid; grid-template-columns: minmax(460px, 46%) minmax(0, 1fr); gap: 16px; max-width: 1680px; margin: 0 auto; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 120px); overflow: auto; }
 .field-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.robot-3d { border: 1px solid var(--line-2); border-radius: 16px; padding: 16px; background: var(--panel); overflow: hidden; }
+.robot-3d-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+.robot-3d h2 { margin: 0; font-size: 20px; }
+.robot-3d-head p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.robot-3d-scene { width: 100%; height: clamp(270px, 34vw, 380px); display: block; margin: 8px 0; border-radius: 10px; background: radial-gradient(ellipse at 50% 70%, #233e31, #101e18 75%); touch-action: pan-y; cursor: grab; }
+.robot-3d-scene:active { cursor: grabbing; }
+.robot-3d-readout { border-left: 3px solid #ff943f; padding: 6px 10px; margin-bottom: 6px; font-size: 14px; color: #ffd3a8; line-height: 1.6; overflow-wrap: anywhere; }
+.robot-3d-help { margin: 8px 0 0; }
+@media (max-width: 480px) { .robot-3d { padding: 12px; } .robot-3d .row { gap: 4px; } .robot-3d-head { gap: 8px; } }
 @media (max-width: 1000px) {
   .app { grid-template-columns: minmax(0, 1fr); }
   .field-col { order: -1; }

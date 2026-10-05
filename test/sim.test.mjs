@@ -4,12 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
-import { Sim, calibrateWheel, calibrateTrack, calibrateTop } from '../src/sim.js';
+import { Sim, DEFAULT_CONFIG, calibrateWheel, calibrateTrack, calibrateTop } from '../src/sim.js';
 import { flatToAst, SPEC, node, lit } from '../src/blocks.js';
 import { programToJson, jsonToProgram } from '../src/blocks-json.js';
 import { importProject, exportLlsp3, makeZip, readZip, buildProject } from '../src/spike-io.js';
 import { MISSIONS, totalScore, missionPoints } from '../src/field.js';
 
+// These legacy approach fixtures deliberately start with the hoop raised.
+const raisedConfig = () => ({ arms: DEFAULT_CONFIG.arms.map(a => ({ ...a, rest: 'up' })) });
 const prog = (list) => flatToAst(list.map(([t, o]) => Object.assign({ t }, o)));
 const runToEnd = (sim, program, limit = 60) => { sim.run(program); let t = 0; while (sim.running && t < limit) { sim.advance(0.02); t += 0.02; } return t; };
 // Program without block ids and gray note statements (export leaves those out).
@@ -87,7 +89,7 @@ test('a fresh run puts pushed pieces back; a match keeps them', () => {
 });
 
 test('repeat runs its body N times and if skips when false', () => {
-  const sim = new Sim({}, { x: 240, y: 240, h: 0 });
+  const sim = new Sim(raisedConfig(), { x: 240, y: 240, h: 0 });
   runToEnd(sim, prog([
     ['repeat', { val: '3' }], ['motor', { port: 'E', dir: 'clockwise', val: '10', unit: 'degrees' }], ['end', {}],
     ['ifColor', { port: 'C', color: 'black' }], ['motor', { port: 'E', dir: 'clockwise', val: '100', unit: 'degrees' }], ['end', {}]
@@ -592,7 +594,7 @@ test('the block editor ignores loose blocks and reads an empty "if" as false', (
 
 test('a model set to one approach side only reacts to pushes from that side', () => {
   // M03 is at (80, 658). Driving west into it is a push from the east.
-  const fromEast = () => { const s = new Sim({}, { x: 300, y: 658, h: -90 }, []); return s; };
+  const fromEast = () => { const s = new Sim(raisedConfig(), { x: 300, y: 658, h: -90 }, []); return s; };
   const wrong = fromEast(); wrong.approach = { m03: 'south' };
   runToEnd(wrong, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
   assert.equal(wrong.mission.m03a, undefined, 'a push from the east does not count when south is required');
@@ -601,7 +603,7 @@ test('a model set to one approach side only reacts to pushes from that side', ()
   runToEnd(right, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
   assert.equal(right.mission.m03a, true);
   // From the south: drive north into its bottom face.
-  const south = new Sim({}, { x: 80, y: 420, h: 0 }, []); south.approach = { m03: 'south' };
+  const south = new Sim(raisedConfig(), { x: 80, y: 420, h: 0 }, []); south.approach = { m03: 'south' };
   runToEnd(south, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
   assert.equal(south.mission.m03a, true);
 });
@@ -637,11 +639,11 @@ test('M07: arm up, drive in, lower the arm onto it, drive back: the mycelium ext
 });
 
 test('M03: push again to flip the rock back for the bonus; a held push counts once', () => {
-  const once = new Sim({}, { x: 300, y: 658, h: -90 }, []);
+  const once = new Sim(raisedConfig(), { x: 300, y: 658, h: -90 }, []);
   runToEnd(once, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }]]));
   assert.equal(once.mission.m03a, true);
   assert.notEqual(once.mission.m03b, true);
-  const twice = new Sim({}, { x: 300, y: 658, h: -90 }, []);
+  const twice = new Sim(raisedConfig(), { x: 300, y: 658, h: -90 }, []);
   runToEnd(twice, prog([['move', { dir: 'forward', val: '20', unit: 'cm' }], ['move', { dir: 'back', val: '5', unit: 'cm' }], ['move', { dir: 'forward', val: '10', unit: 'cm' }]]));
   assert.equal(twice.mission.m03b, true);
 });

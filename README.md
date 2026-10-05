@@ -11,6 +11,9 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - **Left / Right:** one tap moves the start position to the matching spot in the other home.
 - **Robot:** a two-wheel drive base you can configure, with a color sensor, a distance sensor, a gyro (yaw angle) and attachment motors.
 - **Robot editor:** drag the wheels, color sensor, distance sensor and arms on a top view of the robot laid out in LEGO studs (8 mm). Dragging a wheel sideways sets the wheel spacing; dragging it forward or back moves the axle. Pick a standard wheel size (56 mm SPIKE Prime, 88 mm, 62.4 mm, 43.2 mm) or enter your own. Each arm is a **lift/press** arm (tilts up and down) or a **sweep** arm (swings flat), points front, back, left or right, and has a length and gear ratio. Lowered and sweeping arms push loose pieces; arms stop when they press on a model or the mat, like SPIKE stall detection.
+- **3D view:** the model below the mat follows LEGO Education's Practice Driving Base and Tools designs: magenta frame, two medium drive motors, cyan wheels, yellow/white hub, rear ball caster, large front motor, perpendicular 12T bevel gears, black bent-beam lifting hoop, upright distance sensor and downward color sensor. No force sensor is fitted. Drag or use arrow keys to orbit; choose Side, Top or Reset view. The live configuration, heading, wheel rotations and arm geometry drive the view. Component heights, mounting details and part shapes are approximate; this is not measured CAD or a physical clearance check.
+- **Arm home:** the default hoop starts up at motor 0° (90° lift), matching the original simulator. Clockwise lowers it; counterclockwise raises it. A versioned migration restores existing lift-arm home settings to up while retaining custom ports, dimensions, gearing, direction and programs. Later deliberate home-position edits are preserved. Reset and Run return the hoop to its configured home, including a match relaunch; Stop holds its current position.
+- **Drive wiring:** editing the drive pair in the Robot tab updates the idle 3D view immediately. During a run, the active program's pair remains in effect; the saved wiring applies on the next launch.
 - **Blocks:** a drag-and-drop editor that looks and works like the SPIKE App, with the same ten categories:
   - **Motors:** run for, go to position, start, stop, set speed, set relative position, position and relative position.
   - **Movement:** move, steer, tank (left/right %), start/stop moving, movement speed, movement motors, and "1 motor rotation = … cm".
@@ -53,7 +56,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 
 ## Run it
 
-GitHub Pages serves this repo as-is. To run it locally, use any static file server; browsers block ES modules on `file://`, so opening `index.html` directly won't work:
+GitHub Pages serves this repo as-is. In the fork, select **Settings → Pages → Deploy from a branch → main → / (root)** and save. The `.nojekyll` file keeps this a plain static site. The public simulator will be at `https://andrewjgcoward-dot.github.io/fll-bioglow-simulator/`. To run it locally, use any static file server; browsers block ES modules on `file://`, so opening `index.html` directly won't work:
 
 ```bash
 python -m http.server 8000
@@ -106,3 +109,7 @@ The block editor is [Blockly](https://github.com/google/blockly) 11.2.2 (Apache 
 - Sensor readings are simplified. The mat is treated as green, home as white, the home borders as red and blue, and the printed lines as black.
 
 FIRST®, FIRST® LEGO® League and BIOGLOW™ are trademarks of FIRST and the LEGO Group. LEGO®, SPIKE™ and LEGO Education are trademarks of the LEGO Group. This project is not affiliated with or endorsed by either.
+
+## 3D model references
+
+The component arrangement is a schematic based on LEGO Education’s [Practice Driving Base](https://assets.education.lego.com/v3/assets/blt293eea581807678a/blt06873e1b438a0d7e/5ec8e66f033ad5045f4c79a6/driving-base-bi-pdf-book1of1.pdf?locale=en-us), [Tools and Accessories](https://assets.education.lego.com/v3/assets/blt293eea581807678a/blt4e022269eb67e4d6/5ec8e6ef694dd13eb3ffac29/driving-base-tools-accessories-bi-pdf-book1of1.pdf?locale=en-us), and [Color Sensor attachment](https://assets.education.lego.com/v3/assets/blt293eea581807678a/blt1e6ac4849c880a3d/5ec8e74f56542b5199dc012f/driving-base-with-color-sensor-bi-pdf-book1of1.pdf?locale=en-us). The manuals are linked, not redistributed here. Sensor combinations and part clearances have not been physically validated.

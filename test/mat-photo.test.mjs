@@ -70,7 +70,7 @@ test('reflected light comes from the photo when it is shown', () => {
 
 test('the photo does not change how the robot moves', () => {
   const p = prog([['move', { dir: 'forward', val: '30', unit: 'cm' }], ['move', { dir: 'clockwise', val: '0.5', unit: 'rotations' }], ['move', { dir: 'forward', val: '20', unit: 'cm' }]]);
-  const plain = new Sim({}, { x: 600, y: 300, h: 0 }), shown = new Sim({}, { x: 600, y: 300, h: 0 });
+  const plain = new Sim({ arms: [] }, { x: 600, y: 300, h: 0 }), shown = new Sim({ arms: [] }, { x: 600, y: 300, h: 0 });
   shown.matPhoto = stripe(); shown.reset();
   runToEnd(plain, p); runToEnd(shown, p);
   assert.ok(Math.abs(plain.pose.h) > 30, 'the program turns: ' + plain.pose.h);
