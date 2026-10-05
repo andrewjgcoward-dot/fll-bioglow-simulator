@@ -27,7 +27,7 @@ const colorMap = { to: (v) => String(COLOR_CODE[v] ?? 0), from: (v) => CODE_COLO
 const menu = (opts, key, shadow, map) => ({ kind: 'menu', opts, key, shadow, map });
 const port = (shadow = 'flippermotor_multiple-port-selector', key = 'PORT') => ({ kind: 'menu', opts: PORTS, key, shadow, ports: true });
 const field = (opts, key, map) => ({ kind: 'field', opts, key, map });
-const num = (def, key, o = {}) => ({ kind: 'num', def, key, numType: o.numType || 4, shadow: o.shadow });
+const num = (def, key, o = {}) => ({ kind: 'num', def, key, numType: o.numType || 4, shadow: o.shadow, map: o.map });
 const text = (def, key) => ({ kind: 'text', def, key, numType: 10 });
 const bool = (key) => ({ kind: 'bool', key });
 const varRef = () => ({ kind: 'var', key: 'VARIABLE' });
@@ -46,6 +46,17 @@ export const SOUNDS = ['Beep', 'Chirp', 'Hello', 'Celebrate', 'Bonk'];
 
 const MOTOR_DIR = menu(['clockwise', 'counterclockwise'], 'DIRECTION', 'flippermotor_custom-icon-direction');
 const MOVE_DIR = menu(DIRS4, 'DIRECTION', 'flippermove_custom-icon-direction');
+const MOVE_UNIT = field(UNITS, 'UNIT', { to: v => v === 'in' ? 'inches' : v, from: v => v === 'inches' ? 'in' : v });
+// SPIKE's rotation-wheel shadow stores labels such as "right: 100".
+// Its compiler reads the trailing signed number; keep a number inside the simulator.
+const steeringNumber = v => {
+  const match = String(v).match(/-?((\d*\.?\d+)|(\d+\.?))$/);
+  return match ? Math.round(Number(match[0])) : 0;
+};
+const STEERING = { shadow: 'flippermove_rotation-wheel', map: {
+  from: steeringNumber,
+  to: v => { const n = steeringNumber(v); return `${n > 0 ? 'right' : n < 0 ? 'left' : 'straight'}: ${n}`; }
+} };
 const CMP = field(['<', '>', '='], 'COMPARATOR');
 const COLOR_PORT = port('flippersensors_color-sensor-selector');
 
@@ -71,11 +82,11 @@ export const SPEC = {
   motorPos: { cat: 'motor', shape: 'n', text: '%port position', scratch: ['flippermotor_absolutePosition'], p: { port: port('flippermotor_single-motor-selector') } },
   motorRel: { cat: 'motor', shape: 'n', text: '%port relative position', scratch: ['flippermotor_relativePosition', 'flippermotor_motorRelativePosition'], p: { port: port('flippermotor_single-motor-selector') } },
 
-  move: { cat: 'move', text: 'move %dir for %val %unit', scratch: ['flippermove_move'], p: { dir: MOVE_DIR, val: num(10, 'VALUE'), unit: field(UNITS, 'UNIT') } },
-  steer: { cat: 'move', text: 'move %steer steering for %val %unit', scratch: ['flippermove_steer'], p: { steer: num(30, 'STEERING', { shadow: 'flippermove_rotation-wheel' }), val: num(10, 'VALUE'), unit: field(UNITS, 'UNIT') } },
+  move: { cat: 'move', text: 'move %dir for %val %unit', scratch: ['flippermove_move'], p: { dir: MOVE_DIR, val: num(10, 'VALUE'), unit: MOVE_UNIT } },
+  steer: { cat: 'move', text: 'move %steer steering for %val %unit', scratch: ['flippermove_steer'], p: { steer: num(30, 'STEERING', STEERING), val: num(10, 'VALUE'), unit: MOVE_UNIT } },
   startMove: { cat: 'move', text: 'start moving %dir', scratch: ['flippermove_startMove'], p: { dir: MOVE_DIR } },
-  startSteer: { cat: 'move', text: 'start moving %steer steering', scratch: ['flippermove_startSteer'], p: { steer: num(30, 'STEERING', { shadow: 'flippermove_rotation-wheel' }) } },
-  tank: { cat: 'move', text: 'move left %left % right %right % for %val %unit', scratch: ['flippermove_moveDualSpeed'], p: { left: num(50, 'LEFT'), right: num(50, 'RIGHT'), val: num(10, 'VALUE'), unit: field(UNITS, 'UNIT') } },
+  startSteer: { cat: 'move', text: 'start moving %steer steering', scratch: ['flippermove_startSteer'], p: { steer: num(30, 'STEERING', STEERING) } },
+  tank: { cat: 'move', text: 'move left %left % right %right % for %val %unit', scratch: ['flippermove_moveDualSpeed'], p: { left: num(50, 'LEFT'), right: num(50, 'RIGHT'), val: num(10, 'VALUE'), unit: MOVE_UNIT } },
   startTank: { cat: 'move', text: 'start moving left %left % right %right %', scratch: ['flippermove_startDualSpeed'], p: { left: num(50, 'LEFT'), right: num(50, 'RIGHT') } },
   stopMove: { cat: 'move', text: 'stop moving', scratch: ['flippermove_stopMove'] },
   speed: { cat: 'move', text: 'set movement speed to %pct %', scratch: ['flippermove_movementSpeed', 'flippermove_setMovementSpeed'], p: { pct: num(50, 'SPEED') } },

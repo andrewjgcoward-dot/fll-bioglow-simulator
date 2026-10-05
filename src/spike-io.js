@@ -171,7 +171,10 @@ export function convertProject(proj) {
       else if (d.kind === 'sound') { const v = menuValue(b, d.key) ?? ''; try { const o = JSON.parse(v); n[k] = String(o.name ?? v); } catch { n[k] = v; } }
       else if (d.kind === 'field') { const v = b.fields && b.fields[d.key] ? String(b.fields[d.key][0]) : d.opts[0]; n[k] = d.map ? d.map.from(v) : v; }
       else if (d.kind === 'bool') n[k] = boolInput(b, d.key);
-      else n[k] = exprInput(b, d.key, d.def);
+      else {
+        n[k] = exprInput(b, d.key, d.def);
+        if (d.map && ['num', 'text'].includes(n[k].t)) n[k] = lit(d.map.from(n[k].v));
+      }
     }
     if (spec.body) n.body = stmtList(b.inputs && b.inputs[spec.body] && b.inputs[spec.body][1]);
     if (spec.else) n.else = stmtList(b.inputs && b.inputs[spec.else] && b.inputs[spec.else][1]);
@@ -252,11 +255,12 @@ export function buildProject(prog) {
   names.msgs.forEach((name, i) => { msgIds[name] = 'simmsg' + i; broadcasts['simmsg' + i] = name; });
 
   let argKinds = {};
-  const defaultInput = (parent, d) => d.shadow ? shadow(parent, d.shadow, d.def) : [d.numType || 10, String(d.def ?? '')];
+  const defaultInput = (parent, d) => d.shadow ? shadow(parent, d.shadow, d.map ? d.map.to(d.def) : d.def) : [d.numType || 10, String(d.def ?? '')];
   const valueInput = (parent, d, e) => {
     if (d.kind === 'bool') return e && e.t !== 'noteR' ? [2, exprBlock(e, parent)] : undefined;
     if (!e || e.t === 'num' || e.t === 'text' || e.t === 'noteR') {
-      const v = e && e.t !== 'noteR' ? e.v : d.def ?? '';
+      const raw = e && e.t !== 'noteR' ? e.v : d.def ?? '';
+      const v = d.map ? d.map.to(raw) : raw;
       return d.shadow ? [1, shadow(parent, d.shadow, v)] : [1, [d.numType || 10, String(v)]];
     }
     if (e.t === 'var') return [3, [12, e.name, varIds[e.name]], defaultInput(parent, d)];
@@ -287,6 +291,11 @@ export function buildProject(prog) {
   Object.entries(prog.procs || {}).forEach(([name, p], i) => { procArgIds[name] = p.params.map((_, j) => 'simarg' + i + '_' + j); });
 
   const stmtBlock = (x, parent) => {
+    // SPIKE's current download compiler treats move as straight travel.
+    // Preserve the wheel-distance value/unit and represent spins as full steering.
+    if (['move', 'startMove'].includes(x.t) && ['clockwise', 'counterclockwise'].includes(x.dir)) {
+      x = { ...x, t: x.t === 'move' ? 'steer' : 'startSteer', steer: lit(x.dir === 'clockwise' ? 100 : -100) };
+    }
     if (x.t === 'call') {
       const p = prog.procs && prog.procs[x.name]; if (!p) { dropped++; return null; }
       const ids = procArgIds[x.name];

@@ -1,0 +1,232 @@
+{
+  "targets": [
+    {
+      "isStage": true,
+      "name": "Stage",
+      "variables": {},
+      "lists": {},
+      "blocks": {},
+      "sounds": []
+    },
+    {
+      "isStage": false,
+      "name": "Native movement fixture",
+      "variables": {},
+      "lists": {},
+      "blocks": {
+        "block01": {
+          "opcode": "flipperevents_whenProgramStarts",
+          "next": "block02",
+          "parent": null,
+          "inputs": {},
+          "fields": {},
+          "shadow": false,
+          "topLevel": true,
+          "x": 0,
+          "y": 0
+        },
+        "block02": {
+          "opcode": "flippermove_move",
+          "next": "block04",
+          "parent": "block01",
+          "inputs": {
+            "DIRECTION": [
+              1,
+              "block03"
+            ],
+            "VALUE": [
+              1,
+              [
+                4,
+                "7"
+              ]
+            ]
+          },
+          "fields": {
+            "UNIT": [
+              "inches",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "block03": {
+          "opcode": "flippermove_custom-icon-direction",
+          "next": null,
+          "parent": "block02",
+          "inputs": {},
+          "fields": {
+            "field_flippermove_custom-icon-direction": [
+              "forward",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "block04": {
+          "opcode": "flippermove_steer",
+          "next": "block06",
+          "parent": "block02",
+          "inputs": {
+            "STEERING": [
+              1,
+              "block05"
+            ],
+            "VALUE": [
+              1,
+              [
+                4,
+                "180"
+              ]
+            ]
+          },
+          "fields": {
+            "UNIT": [
+              "degrees",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "block05": {
+          "opcode": "flippermove_rotation-wheel",
+          "next": null,
+          "parent": "block04",
+          "inputs": {},
+          "fields": {
+            "field_flippermove_rotation-wheel": [
+              "right: 100",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "block06": {
+          "opcode": "flippermove_move",
+          "next": "block08",
+          "parent": "block04",
+          "inputs": {
+            "DIRECTION": [
+              1,
+              "block07"
+            ],
+            "VALUE": [
+              1,
+              [
+                4,
+                "60"
+              ]
+            ]
+          },
+          "fields": {
+            "UNIT": [
+              "inches",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "block07": {
+          "opcode": "flippermove_custom-icon-direction",
+          "next": null,
+          "parent": "block06",
+          "inputs": {},
+          "fields": {
+            "field_flippermove_custom-icon-direction": [
+              "forward",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "block08": {
+          "opcode": "flippermove_steer",
+          "next": "block10",
+          "parent": "block06",
+          "inputs": {
+            "STEERING": [
+              1,
+              "block09"
+            ],
+            "VALUE": [
+              1,
+              [
+                4,
+                "180"
+              ]
+            ]
+          },
+          "fields": {
+            "UNIT": [
+              "degrees",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "block09": {
+          "opcode": "flippermove_rotation-wheel",
+          "next": null,
+          "parent": "block08",
+          "inputs": {},
+          "fields": {
+            "field_flippermove_rotation-wheel": [
+              "right: 100",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        },
+        "block10": {
+          "opcode": "flippermove_move",
+          "next": null,
+          "parent": "block08",
+          "inputs": {
+            "DIRECTION": [
+              1,
+              "block11"
+            ],
+            "VALUE": [
+              1,
+              [
+                4,
+                "18"
+              ]
+            ]
+          },
+          "fields": {
+            "UNIT": [
+              "cm",
+              null
+            ]
+          },
+          "shadow": false,
+          "topLevel": false
+        },
+        "block11": {
+          "opcode": "flippermove_custom-icon-direction",
+          "next": null,
+          "parent": "block10",
+          "inputs": {},
+          "fields": {
+            "field_flippermove_custom-icon-direction": [
+              "forward",
+              null
+            ]
+          },
+          "shadow": true,
+          "topLevel": false
+        }
+      },
+      "sounds": []
+    }
+  ]
+}
