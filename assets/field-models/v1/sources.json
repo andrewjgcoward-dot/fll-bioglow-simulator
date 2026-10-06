@@ -1,0 +1,215 @@
+[
+  {
+    "file": "M01.io",
+    "url": "https://komurobo.com/3d/bioglow/M01.io",
+    "name": "Drone Survey",
+    "missions": [
+      "M01"
+    ],
+    "existing_entity_keys": [
+      "m01base",
+      "m01track",
+      "m01drone",
+      "m01pilot",
+      "m01map"
+    ],
+    "setup_guide_page_one_based": 3,
+    "notes": "Separate the LiDAR map from the launcher assembly. Preserve the sloping track. Use fixed red base and pilot base anchors, rather than whole-model centroid.",
+    "verified_bytes": 516071,
+    "verified_sha256": "33944426b985b5b5d60e435139c55eab119f928c8d3b86f3ecfe2bcce89be71d",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M02.io",
+    "url": "https://komurobo.com/3d/bioglow/M02.io",
+    "name": "Exploding Seeds",
+    "missions": [
+      "M02"
+    ],
+    "existing_entity_keys": [
+      "m02"
+    ],
+    "setup_guide_page_one_based": 4,
+    "notes": "Set seeds as shown in the setup guide; green tube orientations may vary.",
+    "verified_bytes": 445428,
+    "verified_sha256": "b2d6b7827c0278d1e26af26913a5311b3dcacf2b736e74fc8b27afc167489f85",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M03.io",
+    "url": "https://komurobo.com/3d/bioglow/M03.io",
+    "name": "Flip the Rock",
+    "missions": [
+      "M03"
+    ],
+    "existing_entity_keys": [
+      "m03"
+    ],
+    "setup_guide_page_one_based": 5,
+    "notes": "Check starting rock and flag state against guide. Current 2D rotation is only a seed estimate.",
+    "verified_bytes": 576552,
+    "verified_sha256": "d1c22c173ef6da15c52ce2f6b4252a6bf9daa1ebee802a14f6274ec2fbe6ccae",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M04.io",
+    "url": "https://komurobo.com/3d/bioglow/M04.io",
+    "name": "Lucky Leaves",
+    "missions": [
+      "M04"
+    ],
+    "existing_entity_keys": [
+      "m04"
+    ],
+    "setup_guide_page_one_based": 6,
+    "notes": "Source leaves/katydid units are displayed beside the nest; place them onto the nest. Root groups 1-3 form nest sections; groups 4-6 are the separate tall units. Their exact mission-role assignment and starting configuration need visual verification. Referees randomize the leaves and katydid.",
+    "verified_bytes": 2190482,
+    "verified_sha256": "2527f434228e4a1f2d05cada62850e64d53493b2f58ec1bf552c641f0c405f89",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M05.io",
+    "url": "https://komurobo.com/3d/bioglow/M05.io",
+    "name": "Reaching Roots",
+    "missions": [
+      "M05"
+    ],
+    "existing_entity_keys": [
+      "m05"
+    ],
+    "setup_guide_page_one_based": 7,
+    "notes": "Source model is raised/extended. Set the folded starting pose shown in the guide. Base should face the back wall.",
+    "verified_bytes": 255069,
+    "verified_sha256": "573d6e427100ae47daed63c67ed2a9b4b650ecb654e20377b4391464d2e08b56",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M06.io",
+    "url": "https://komurobo.com/3d/bioglow/M06.io",
+    "name": "Leafcutter Frenzy and Humongous Fungus",
+    "missions": [
+      "M06",
+      "M07"
+    ],
+    "existing_entity_keys": [
+      "m06",
+      "m07"
+    ],
+    "setup_guide_page_one_based": 8,
+    "notes": "Separate or jointly anchor nest/ant assembly and mycelium assembly. Nest is west, mycelium east. Set both initial states from guide.",
+    "verified_bytes": 1333352,
+    "verified_sha256": "ed4f94ad946ada25ff812145a05f11b523f51559b3846d7edda8f0a5c5c4a11a",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M07.io",
+    "url": "https://komurobo.com/3d/bioglow/M07.io",
+    "name": "Tangled and Research Platform",
+    "missions": [
+      "M08",
+      "M09"
+    ],
+    "existing_entity_keys": [
+      "m0809"
+    ],
+    "setup_guide_page_one_based": 9,
+    "notes": "Shared tall tree assembly. Preserve submodels for vine, platform, camera trap and seed. Check all starting poses.",
+    "verified_bytes": 1036890,
+    "verified_sha256": "af80933bf348447e6e631f535ff02895128b140caba1e09b1e5c99e44c04cf35",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M08.io",
+    "url": "https://komurobo.com/3d/bioglow/M08.io",
+    "name": "Fragile Microhabitats",
+    "missions": [
+      "M10"
+    ],
+    "existing_entity_keys": [
+      "m10spider",
+      "m10snail"
+    ],
+    "setup_guide_page_one_based": 10,
+    "notes": "Split the two habitats; their source side-by-side layout is not their field spacing.",
+    "verified_bytes": 209513,
+    "verified_sha256": "648c9c55597782db4f9672330ebf031fdb5b0713c52d7e2753d3a259391c7c3c",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M09.io",
+    "url": "https://komurobo.com/3d/bioglow/M09.io",
+    "name": "Window to the Past",
+    "missions": [
+      "M11"
+    ],
+    "existing_entity_keys": [
+      "m11"
+    ],
+    "setup_guide_page_one_based": 11,
+    "notes": "Set root cover to its starting raised state and orient the fixed base to wireframe.",
+    "verified_bytes": 427509,
+    "verified_sha256": "d00205e68dce22f30ed530a0632ecf3aa3fbc3c38b5660fa4e25802fec809c48",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M10.io",
+    "url": "https://komurobo.com/3d/bioglow/M10.io",
+    "name": "Forest Elder",
+    "missions": [
+      "M12"
+    ],
+    "existing_entity_keys": [
+      "m12",
+      "m12post",
+      "m12tie",
+      "m12cane"
+    ],
+    "setup_guide_page_one_based": 12,
+    "notes": "Separate tree, post, ring/tie and cane. Check their placements and start pose against guide; the 2D post coordinates also include an unverified coach-note approximation.",
+    "verified_bytes": 308751,
+    "verified_sha256": "488bc31ba8d9faa03f8b9ec8ea327241a17923c411adde0a00b4ea843efdf964",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M11.io",
+    "url": "https://komurobo.com/3d/bioglow/M11.io",
+    "name": "Keystone Species",
+    "missions": [
+      "M13"
+    ],
+    "existing_entity_keys": [],
+    "setup_guide_page_one_based": 13,
+    "notes": "Source includes a separate dock. Use one dock per selected location and seat/latch the model. Keystone species loose piece starts at home; verify presence in source.",
+    "verified_bytes": 317060,
+    "verified_sha256": "a93b1f2ed0f9eca6103620f82eff52481898ec38bbe907bb18b3d7d47481716f",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M12.io",
+    "url": "https://komurobo.com/3d/bioglow/M12.io",
+    "name": "Seeds of Renewal",
+    "missions": [
+      "M14"
+    ],
+    "existing_entity_keys": [],
+    "setup_guide_page_one_based": 14,
+    "notes": "Source includes a separate dock. Use one dock per selected location and seat/latch the model; keep loose seeds separately configurable.",
+    "verified_bytes": 683785,
+    "verified_sha256": "d75f7934bd9661024f9006aa95ea6a55104d9f4b6948d4451af8ff2d8cbe2180",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  },
+  {
+    "file": "M13.io",
+    "url": "https://komurobo.com/3d/bioglow/M13.io",
+    "name": "Biocentric Architecture",
+    "missions": [
+      "M15"
+    ],
+    "existing_entity_keys": [],
+    "setup_guide_page_one_based": 15,
+    "notes": "Source includes a separate dock. Use one dock per selected location and seat/latch the model. Preserve canopy, skylight and hatch submodels.",
+    "verified_bytes": 723852,
+    "verified_sha256": "5f4a71b9d08efb62a6abb58f310bffbc991424565de6f01b721a0dc25b4655ac",
+    "source_origins_and_pose": "Not registered to mat; must calibrate"
+  }
+]

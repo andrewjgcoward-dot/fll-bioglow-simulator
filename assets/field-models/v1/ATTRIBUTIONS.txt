@@ -1,0 +1,67 @@
+Model assemblies: Komurobo, https://komurobo.com/fll/3d-models/
+Parts authors credited in the downloaded Studio archives:
+
+Alex Taylor [anathema]
+Andreas Weissenburg [grubaluk]
+Andy Westrate [westrate]
+Bernd Broich [bbroich]
+Chris Böhnke [KnightOfTarenta]
+Chris Dee [cwdee]
+Damien Roux [Darats]
+Dee Earley [DeannaEarley]
+Don Heyse
+Donald Sutter [technog]
+El'dar Ismagilov [Eldar]
+Franklin W. Cain [fwcain]
+Gerald Lasser [GeraldLasser]
+Greg Teft [gregteft]
+Guy Vivan [guyvivan]
+Ishino Keiichiro
+J.C. Tchang [tchang]
+James Jessiman
+Jeff Boen
+Jeff Boen [onyx]
+Jeff Jones [notmaster]
+Jens Brühl [jb70]
+Joerg Sommerer [Brickaneer]
+John Riley [jriley]
+John Van Zwieten [jvan]
+Jonathan P. Brown
+Joseph H. Cardana
+Kevin Roach [KROACH]
+Lutz Uhlmann
+Lutz Uhlmann [El-Lutzo]
+Magnus Forsberg [MagFors]
+Marc Klein [marckl]
+Marc Schickele [samrotule]
+Mark Kennedy [mkennedy]
+Massimo Maso [Sirio]
+Matt Schild [mschild]
+Max Martin Richter [MMR1988]
+Max Murtazin [SwampKryakwa]
+Michael Heidemann [mikeheide]
+Mikkel Bech Jensen [gaia]
+Niels Karsdorp [nielsk]
+Nils Schmidt [BlackBrick89]
+Orion Pobursky [OrionP]
+Owen Burgoyne [C3POwen]
+Paul Easter [pneaster]
+Philippe Hurbain [Philo]
+Remco Braak
+Rene Rechthaler [Blechtaler]
+Rolf Osterthun [Rolf]
+Ross Crawford [rosco]
+Santeri Piippo [arezey]
+Steffen [Steffen]
+Steve Bliss [sbliss]
+Studio
+Takeshi Takahashi [RainbowDolphin]
+Thomas Burger [grapeape]
+Tim Gould [timgould]
+Tore Eriksson [Tore_Eriksson]
+Ulrich Röder [UR]
+William Howard [WilliamH]
+Willy Tschager [Holly-Wood]
+[PTadmin]
+
+Source-model rights remain with their respective owners. This private conversion grants no new redistribution license.

@@ -57,14 +57,16 @@ export function fitViewport(scene, width, height, camera) {
   return { width, height, scale, x: width / 2, y: height / 2 + high * Math.cos(rad(camera.elevation)) * scale / 2 };
 }
 
-export function renderRobot3D(scene, camera = DEFAULT_CAMERA, width = 700, height = 340) {
+export function renderRobot3D(scene, camera = DEFAULT_CAMERA, width = 700, height = 340, geometryOnly = false) {
   const c = scene.cfg, view = fitViewport(scene, width, height, camera), faces = [];
+  const polygons = [], segments = [];
   const h = rad(scene.pose.h), cs = Math.cos(h), sn = Math.sin(h);
   const world = ([x, y, z]) => [x * cs + y * sn, -x * sn + y * cs, z];
   const screen = p => { const q = projectPoint(p, camera); return [view.x + q[0] * view.scale, view.y + q[1] * view.scale, q[2]]; };
   const point = p => screen(world(p));
   const points = ps => ps.map(p => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ');
   const face = (ps, fill, stroke = '#10221b', label = '', decals = []) => {
+    if (geometryOnly) { polygons.push({ points: ps, color: fill, label, decal: false }); for (const d of decals) polygons.push({ points: d.points, color: d.fill, label, decal: true }); return; }
     const q = ps.map(point); faces.push({ depth: q.reduce((s, p) => s + p[2], 0) / q.length,
       markup: `<polygon points="${points(q)}" fill="${fill}" stroke="${stroke}" stroke-width="1" stroke-linejoin="round"${label ? ` data-part="${escape(label)}"` : ''}/>` + decals.map(d => `<polygon points="${points(d.points.map(point))}" fill="${d.fill}" stroke="#34443c" stroke-width=".5"/>`).join('') });
   };
@@ -76,6 +78,7 @@ export function renderRobot3D(scene, camera = DEFAULT_CAMERA, width = 700, heigh
     });
   };
   const line = (a, b, color, thickness = 2, label = '') => {
+    if (geometryOnly) { segments.push({ a, b, color, thickness, label }); return; }
     const q = point(a), r = point(b);
     faces.push({ depth: (q[2] + r[2]) / 2 + .05, markup: `<line x1="${q[0]}" y1="${q[1]}" x2="${r[0]}" y2="${r[1]}" stroke="${color}" stroke-width="${Math.max(1,thickness*view.scale)}" stroke-linecap="round"${label ? ` data-part="${escape(label)}"` : ''}/>` });
   };
@@ -184,6 +187,7 @@ export function renderRobot3D(scene, camera = DEFAULT_CAMERA, width = 700, heigh
     line(moving([-half-8,arm.len,-bend]),moving([half+8,arm.len,-bend]),'#b6c1c8',5,'hoop cross axle '+arm.port);
     line(moving([-half-8,arm.len,-bend-1]),moving([half+8,arm.len,-bend-1]),'#606e78',1,'axle groove');
   }
+  if (geometryOnly) return { polygons, segments };
   const ground=[];const r=190;
   for(let i=-240;i<=240;i+=40) {
     const ox=((scene.pose.x%40)+40)%40,oy=((scene.pose.y%40)+40)%40;
@@ -196,6 +200,10 @@ export function renderRobot3D(scene, camera = DEFAULT_CAMERA, width = 700, heigh
   return { markup, view, armText: scene.arms.length ? scene.arms.map(a => `${a.port} · ${a.state} · ${a.lift ? `lift ${Math.round(a.geometry.tilt)}°` : `sweep ${Math.round(a.geometry.ang)}°`} · motor ${Math.round(a.motor)}°`).join('   |   ') : 'No arms configured — add one in the Robot tab.',
     poseText: `${scene.status} · x ${(scene.pose.x/10).toFixed(1)} cm · y ${(scene.pose.y/10).toFixed(1)} cm · heading ${Math.round(((scene.pose.h%360)+360)%360)}°` };
 }
+
+// The field viewer consumes the same parts as the SVG close-up.
+// Coordinates remain robot-local mm; the field view owns only presentation transforms.
+export function robotMeshData(scene) { return renderRobot3D(scene, DEFAULT_CAMERA, 1, 1, true); }
 
 export function createRobot3D(panel, sim, options = {}) {
   const svg=panel.querySelector('svg'), armReadout=panel.querySelector('[data-arm-state]'), poseReadout=panel.querySelector('[data-robot-pose]');

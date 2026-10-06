@@ -2,3 +2,9 @@ node_modules/
 # Your own SPIKE projects for local testing (see README)
 fixtures/
 *.llsp3
+# Keep optional local imports private; the authorized bundled pack is versioned.
+*.glb
+*.io
+/private-models.zip
+/private-models/
+/bioglow-local-models*.zip

@@ -1,0 +1,569 @@
+{
+  "schema": "bioglow-local-model-pack",
+  "version": 1,
+  "units": "mm",
+  "assetUnits": "m",
+  "title": "BIOGLOW mission models",
+  "assets": [
+    {
+      "id": "M01",
+      "file": "models/M01.glb",
+      "bytes": 2416420,
+      "sha256": "4299fd048128357b3b980fd3c9c3ee2c288a1eb1fff8d8df4d61c5fe13682e0b"
+    },
+    {
+      "id": "M02",
+      "file": "models/M02.glb",
+      "bytes": 3062380,
+      "sha256": "d95b235bf15e2d7c838a13aba7d293f6605f39125d19462c381e21832193af0b"
+    },
+    {
+      "id": "M03",
+      "file": "models/M03.glb",
+      "bytes": 3725976,
+      "sha256": "b4283513cf8e58dd012e8076a30117ccf1eb3c2c706dd0c71026a3ea22721171"
+    },
+    {
+      "id": "M04",
+      "file": "models/M04.glb",
+      "bytes": 2402760,
+      "sha256": "135c9829babaac93d2d1f632bacf0b733c45f4a76863f132684d24739cd83295"
+    },
+    {
+      "id": "M05",
+      "file": "models/M05.glb",
+      "bytes": 2123936,
+      "sha256": "dcedb4a33e0593284553aea543bd0e216520fd34714f55631a1844c4e0f7adc8"
+    },
+    {
+      "id": "M06",
+      "file": "models/M06.glb",
+      "bytes": 5086916,
+      "sha256": "f1fb74070ec5df85b5273e5fe2120afb4ca8fe11aad4ab3758c1828cde30f2dd"
+    },
+    {
+      "id": "M07",
+      "file": "models/M07.glb",
+      "bytes": 14770328,
+      "sha256": "a1babc3617c2cb19a161908ece6a3fda2b99002aa08255232b87441b3ef94405"
+    },
+    {
+      "id": "M08",
+      "file": "models/M08.glb",
+      "bytes": 1909512,
+      "sha256": "edab72a9a1090055509546bd9a98223700dbc2224f8b17958521d53e82e1c3f7"
+    },
+    {
+      "id": "M09",
+      "file": "models/M09.glb",
+      "bytes": 2339088,
+      "sha256": "889a2dd653e113e62d3690a52186cf74ec7eb3e917fd1d5a4c7f3bbfdb1d14a0"
+    },
+    {
+      "id": "M10",
+      "file": "models/M10.glb",
+      "bytes": 2260876,
+      "sha256": "470e8dd417ad0515b1e7c6ee5e930b0ad4ae28ff7de59a9f05cdc0f8404ca2f0"
+    },
+    {
+      "id": "M11",
+      "file": "models/M11.glb",
+      "bytes": 5865912,
+      "sha256": "5dcfbc026893742ad5b427fa6d61ed50f3c225e2235128049f7c0835c687601c"
+    },
+    {
+      "id": "M12",
+      "file": "models/M12.glb",
+      "bytes": 4448112,
+      "sha256": "a083ba3cc233aecf78aee7d738dc1de9509294724581b045e005dcca2382cc28"
+    },
+    {
+      "id": "M13",
+      "file": "models/M13.glb",
+      "bytes": 5700840,
+      "sha256": "e692e1189cc6b26df1d15b98dbd7ac08a4f2411f36c0570655da865dcd0eff32"
+    }
+  ],
+  "placements": [
+    {
+      "id": "M01-launcher",
+      "asset": "M01",
+      "nodes": [
+        "M01-launcher"
+      ],
+      "origin": [
+        -3.68266,
+        -29.4095,
+        0.00015
+      ],
+      "position": [
+        650,
+        45,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M01-map",
+      "asset": "M01",
+      "nodes": [
+        "M01-map"
+      ],
+      "origin": [
+        87.93625,
+        -23.1872,
+        123.4059
+      ],
+      "position": [
+        1055,
+        220,
+        0
+      ],
+      "yaw": 30
+    },
+    {
+      "id": "M02-mission",
+      "asset": "M02",
+      "nodes": [
+        "M02-mission"
+      ],
+      "origin": [
+        3.394,
+        -0.0,
+        -14.33405
+      ],
+      "position": [
+        630,
+        540,
+        0
+      ],
+      "yaw": 20
+    },
+    {
+      "id": "M03-mission",
+      "asset": "M03",
+      "nodes": [
+        "M03-mission"
+      ],
+      "origin": [
+        92.0001,
+        16.5568,
+        49.96565
+      ],
+      "position": [
+        80,
+        658,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M04-nest",
+      "asset": "M04",
+      "nodes": [
+        "M04-nest"
+      ],
+      "origin": [
+        -23.00875,
+        -3.2,
+        29.2433
+      ],
+      "position": [
+        116,
+        1020,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M04-leaf-a",
+      "asset": "M04",
+      "nodes": [
+        "M04-leaf-a"
+      ],
+      "origin": [
+        104.093,
+        -3.2,
+        20.8
+      ],
+      "position": [
+        166,
+        1020,
+        16
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M04-leaf-b",
+      "asset": "M04",
+      "nodes": [
+        "M04-leaf-b"
+      ],
+      "origin": [
+        160.093,
+        -3.2,
+        20.8
+      ],
+      "position": [
+        116,
+        1047,
+        16
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M04-leaf-c",
+      "asset": "M04",
+      "nodes": [
+        "M04-leaf-c"
+      ],
+      "origin": [
+        214.5157,
+        -3.2,
+        19.95555
+      ],
+      "position": [
+        64,
+        1020,
+        16
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M05-mission",
+      "asset": "M05",
+      "nodes": [
+        "M05-mission"
+      ],
+      "origin": [
+        -7.1665,
+        -0.0,
+        56.852
+      ],
+      "position": [
+        402,
+        1090,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M06-nest",
+      "asset": "M06",
+      "nodes": [
+        "M06-nest"
+      ],
+      "origin": [
+        -36.4014,
+        -0.0,
+        40.2841
+      ],
+      "position": [
+        1502,
+        1072,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M06-mycelium",
+      "asset": "M06",
+      "nodes": [
+        "M06-mycelium"
+      ],
+      "origin": [
+        1.8707,
+        44.5414,
+        107.72905
+      ],
+      "position": [
+        1582,
+        1072,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M07-mission",
+      "asset": "M07",
+      "nodes": [
+        "M07-mission"
+      ],
+      "origin": [
+        46.6829,
+        -120.9982,
+        155.81525
+      ],
+      "position": [
+        578,
+        1068,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M08-spider",
+      "asset": "M08",
+      "nodes": [
+        "M08-spider"
+      ],
+      "origin": [
+        52.00005,
+        -16.0,
+        12.0
+      ],
+      "position": [
+        749,
+        1048,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M08-snail",
+      "asset": "M08",
+      "nodes": [
+        "M08-snail"
+      ],
+      "origin": [
+        -46.4,
+        -16.0001,
+        48.0
+      ],
+      "position": [
+        1040,
+        720,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M09-mission",
+      "asset": "M09",
+      "nodes": [
+        "M09-mission"
+      ],
+      "origin": [
+        -66.6923,
+        -8.8872,
+        -41.7278
+      ],
+      "position": [
+        1406,
+        594,
+        0
+      ],
+      "yaw": 45
+    },
+    {
+      "id": "M10-tree",
+      "asset": "M10",
+      "nodes": [
+        "M10-tree"
+      ],
+      "origin": [
+        22.95865,
+        -0.0004,
+        29.3691
+      ],
+      "position": [
+        1940,
+        758,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M10-tie",
+      "asset": "M10",
+      "nodes": [
+        "M10-tie"
+      ],
+      "origin": [
+        0.0,
+        -0.0,
+        -117.2
+      ],
+      "position": [
+        1940,
+        712,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M10-post",
+      "asset": "M10",
+      "nodes": [
+        "M10-post"
+      ],
+      "origin": [
+        -7.2238,
+        -2.3991,
+        -44.0
+      ],
+      "position": [
+        1940,
+        655,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M10-cane",
+      "asset": "M10",
+      "nodes": [
+        "M10-cane"
+      ],
+      "origin": [
+        120.0,
+        -3.2,
+        -100.0
+      ],
+      "position": [
+        1940,
+        875,
+        0
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M10-tree-tip",
+      "asset": "M10",
+      "nodes": [
+        "M10-tree-tip"
+      ],
+      "origin": [
+        98.302,
+        19.8021,
+        1.2
+      ],
+      "position": [
+        1940,
+        758,
+        92
+      ],
+      "yaw": 0
+    },
+    {
+      "id": "M11-mission",
+      "asset": "M11",
+      "nodes": [
+        "M11-mission"
+      ],
+      "origin": [
+        11.9998,
+        -0.0,
+        60.00035
+      ],
+      "position": [
+        1880,
+        1030,
+        0
+      ],
+      "yaw": -40,
+      "dockModel": "M13",
+      "dockYaw": 0
+    },
+    {
+      "id": "M11-dock",
+      "asset": "M11",
+      "nodes": [
+        "M11-dock"
+      ],
+      "origin": [
+        148.0,
+        0.0,
+        51.99985
+      ],
+      "position": [
+        1880,
+        1030,
+        0
+      ],
+      "yaw": -40,
+      "dockModel": "M13",
+      "dockYaw": 0
+    },
+    {
+      "id": "M12-mission",
+      "asset": "M12",
+      "nodes": [
+        "M12-mission"
+      ],
+      "origin": [
+        11.9998,
+        -0.0,
+        52.00035
+      ],
+      "position": [
+        1282,
+        91,
+        0
+      ],
+      "yaw": 0,
+      "dockModel": "M14",
+      "dockYaw": 0
+    },
+    {
+      "id": "M12-dock",
+      "asset": "M12",
+      "nodes": [
+        "M12-dock"
+      ],
+      "origin": [
+        148.0,
+        0.0,
+        51.99985
+      ],
+      "position": [
+        1282,
+        91,
+        0
+      ],
+      "yaw": 0,
+      "dockModel": "M14",
+      "dockYaw": 0
+    },
+    {
+      "id": "M13-mission",
+      "asset": "M13",
+      "nodes": [
+        "M13-mission"
+      ],
+      "origin": [
+        5.4499,
+        -0.0,
+        39.3493
+      ],
+      "position": [
+        998,
+        627,
+        0
+      ],
+      "yaw": 0,
+      "dockModel": "M15",
+      "dockYaw": 0
+    },
+    {
+      "id": "M13-dock",
+      "asset": "M13",
+      "nodes": [
+        "M13-dock"
+      ],
+      "origin": [
+        148.0,
+        0.0,
+        51.99985
+      ],
+      "position": [
+        998,
+        627,
+        0
+      ],
+      "yaw": 0,
+      "dockModel": "M15",
+      "dockYaw": 0
+    }
+  ]
+}

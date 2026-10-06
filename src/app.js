@@ -57,6 +57,10 @@ sim.cfg = state.cfg; // share the object so Robot tab edits apply immediately
 sim.docks = state.docks; sim.approach = state.approach; sim.reset();
 sim.onLog = () => renderLog();
 const robot3D = createRobot3D($('robot-3d'), sim);
+let field3D = null;
+import('./field-3d.js').then(({ createField3D }) => { field3D = createField3D($('field-3d'), sim, { getMatMode: () => state.mat }); }).catch(() => {
+  $('field-3d').querySelector('[data-pack-status]').textContent = 'The 3D field camera is unavailable in this browser. The 2D simulator and robot view still work.';
+});
 
 // ---------- hub: light matrix, center light, buttons, variables, sound ----------
 
@@ -184,6 +188,7 @@ function syncObjects() {
 
 function drawField() {
   robot3D.update();
+  field3D?.update();
   const p = sim.pose, s = sim.sens;
   syncObjects();
   syncMission();
@@ -785,7 +790,7 @@ layoutChanged();
 document.querySelector('.views').addEventListener('click', (e) => { const b = e.target.closest('[data-view]'); if (b) setView(+b.dataset.view); });
 
 let swipe = null;
-const NO_SWIPE = '#blockly, #field, #robot-editor, input, select, textarea, dialog, .blocklyWidgetDiv, .blocklyDropDownDiv';
+const NO_SWIPE = '#blockly, #field, #field-3d, #robot-3d, #robot-editor, input, select, textarea, dialog, .blocklyWidgetDiv, .blocklyDropDownDiv';
 document.addEventListener('pointerdown', (e) => {
   swipe = null;
   if (!isPhone() || !e.isPrimary || e.pointerType === 'mouse' || e.target.closest(NO_SWIPE)) return;

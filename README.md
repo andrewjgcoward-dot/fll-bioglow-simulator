@@ -113,3 +113,7 @@ FIRST®, FIRST® LEGO® League and BIOGLOW™ are trademarks of FIRST and the LE
 ## 3D model references
 
 The component arrangement is a schematic based on LEGO Education’s [Practice Driving Base](https://assets.education.lego.com/v3/assets/blt293eea581807678a/blt06873e1b438a0d7e/5ec8e66f033ad5045f4c79a6/driving-base-bi-pdf-book1of1.pdf?locale=en-us), [Tools and Accessories](https://assets.education.lego.com/v3/assets/blt293eea581807678a/blt4e022269eb67e4d6/5ec8e6ef694dd13eb3ffac29/driving-base-tools-accessories-bi-pdf-book1of1.pdf?locale=en-us), and [Color Sensor attachment](https://assets.education.lego.com/v3/assets/blt293eea581807678a/blt1e6ac4849c880a3d/5ec8e74f56542b5199dc012f/driving-base-with-color-sensor-bi-pdf-book1of1.pdf?locale=en-us). The manuals are linked, not redistributed here. Sensor combinations and part clearances have not been physically validated.
+
+## Bundled 3D field models
+
+The field camera automatically loads 13 mission models in 26 placements; no ZIP upload is needed. Lossless preprocessing reduces model downloads from 56.11 MB to 16.37 MB, with checksum verification and decompression in a background worker. See [model loading, preprocessing and controls](LOCAL-MODEL-PACKS.md) and [model sources and attribution](assets/field-models/v1/README.txt). Model mechanisms are static, placements approximate, and movement/collisions/scoring use the existing 2D simulator.
