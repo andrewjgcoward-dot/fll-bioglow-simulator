@@ -2,9 +2,9 @@ import { createBundledDecoder } from './bundled-model-decoder.js';
 import { PACK_LIMITS, validatePackManifest, validatePackGlb } from './model-pack.js';
 
 // Version the manifest when placements change; version asset paths if model bytes change.
-// Every published r3 asset has a compressed transport; asset.file is its decoded logical name.
+// Every published r4 asset has a compressed transport; asset.file is its decoded logical name.
 // Keeping unchanged transport URLs lets old visits reuse their cached downloads.
-export const BUNDLED_MANIFEST_URL = new URL('../assets/field-models/v1/manifest-r3.json', import.meta.url);
+export const BUNDLED_MANIFEST_URL = new URL('../assets/field-models/v1/manifest-r4.json', import.meta.url);
 const failedURLs = new Set();
 
 async function fetchBytes(url, limit, signal, onProgress, fetcher) {

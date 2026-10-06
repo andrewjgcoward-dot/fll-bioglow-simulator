@@ -1,0 +1,810 @@
+{
+  "revision": "r4",
+  "date": "2026-10-06",
+  "scope": "Render placement and feasible separate-component starting poses. No simulation physics change.",
+  "sources": {
+    "official_resources": "https://www.firstinspires.org/resources/library/fll/season-materials",
+    "wireframe": "https://firstinspires.blob.core.windows.net/fll/challenge/2026-27/fll-challenge-bioglow-wireframe-grid.pdf",
+    "setup_photos": "https://firstinspires.blob.core.windows.net/fll/challenge/2026-27/fll-challenge-bioglow-field-setup-reference-guide.pdf",
+    "rulebook": "https://firstinspires.blob.core.windows.net/fll/challenge/2026-27/fll-challenge-bioglow-rgr.pdf",
+    "table_instructions": "https://firstinspires.blob.core.windows.net/fll/challenge/2026-27/fll-challenge-bioglow-table-building-instructions.pdf",
+    "updates": "https://firstinspires.blob.core.windows.net/fll/challenge/2026-27/fll-challenge-bioglow-updates.pdf",
+    "setup_video": "https://www.youtube.com/watch?v=wDan0826cn0",
+    "third_party_models": "https://komurobo.com/fll/3d-models/"
+  },
+  "source_pdf_sha256": {
+    "wireframe_pdf": "33231bb977f1e93abc8a1c31986705c8dd5cec8e321f8dc8d879e42934939244",
+    "setup_guide_pdf": "f04709ef981b2622a145a3db2b0c1876022422e0dac4f27efc0ef4d293ff59e0"
+  },
+  "texture_registration": {
+    "affine_wire_uv_to_texture_uv": [
+      [
+        0.7055834317772491,
+        -0.00030133842439708573,
+        4.3513441201610705
+      ],
+      [
+        -2.0239342758006487e-05,
+        0.7156173069335673,
+        -5.6936157821158035
+      ]
+    ],
+    "boundary_rmse_px": 0.3910950279004809,
+    "points": 820,
+    "method": "Proper affine fit to boundaries of three disconnected printed robot travel lines; no per-model scaling"
+  },
+  "global_dimensions_mm": [
+    2000,
+    1143
+  ],
+  "dimension_note": "The approximate margins imply about 2000 versus 2020 mm mat widths. 1143 mm is table depth, not an independently specified mat height. Do not silently call 2000x1143 or 2000x1134 an exact official mat dimension. Resolve with physical mat measurement or a verified dimensioned source, and maintain a separately calibrated image transform.",
+  "rigid_model_scale_note": "Unchanged 0.4 mm/LDU. Only proper yaw rotations and translations; no per-model scale, reflection, geometry edits or recompression. Affine registration applies only between the two printed images.",
+  "residual_definition": "Boundary residual is one-sided nearest dark-pixel distance from sampled fixed-base outlines, using 0.71 mm/native pixel as an approximate scalar. Rasterized at 6 samples/mm and nominal yaw fixed after a free-yaw check. These in-fit residuals are not held-out landmark RMS or physical accuracy.",
+  "landmark_cross_checks": {
+    "M01-map": {
+      "method": "3 manually picked fixed-outline corners fitted with proper rigid Kabsch; fourth corner checked. All are from the same raster used for boundary registration, not independent held-out evidence.",
+      "target_native_uv": [
+        [
+          1422.0,
+          1267.25
+        ],
+        [
+          1500.75,
+          1222.5
+        ],
+        [
+          1543.25,
+          1250.25
+        ],
+        [
+          1445.75,
+          1330.75
+        ]
+      ],
+      "source_glb_xz_mm": [
+        [
+          68.14486757914224,
+          109.51613362630208
+        ],
+        [
+          132.14486757914227,
+          109.68280029296875
+        ],
+        [
+          148.3115342458089,
+          141.5161336263021
+        ],
+        [
+          60.14486757914225,
+          157.34946695963544
+        ]
+      ],
+      "fit_yaw_deg": -29.90348406940006,
+      "source_to_target_residual_mm": [
+        0.08006648337043872,
+        0.196879916451567,
+        0.144024989187949,
+        0.22250418365876798
+      ],
+      "check_corner_residual_mm": 0.22250418365876798,
+      "picking_uncertainty_native_px": 1.5,
+      "physical_accuracy_certified": false
+    },
+    "M04-nest": {
+      "method": "3 manually picked fixed-outline corners fitted with proper rigid Kabsch; fourth corner checked. All are from the same raster used for boundary registration, not independent held-out evidence.",
+      "target_native_uv": [
+        [
+          206.5,
+          79.75
+        ],
+        [
+          139.0,
+          107.75
+        ],
+        [
+          79.25,
+          205.75
+        ],
+        [
+          101.75,
+          261.75
+        ]
+      ],
+      "source_glb_xz_mm": [
+        [
+          -86.73390197753906,
+          50.43926684061687
+        ],
+        [
+          -39.06723531087239,
+          70.10593350728352
+        ],
+        [
+          40.26609802246094,
+          50.272600173950195
+        ],
+        [
+          57.432764689127595,
+          10.772600173950195
+        ]
+      ],
+      "fit_yaw_deg": 134.97028885711356,
+      "source_to_target_residual_mm": [
+        0.157443006156263,
+        0.0851187215596692,
+        0.129286653406413,
+        0.10161494590538896
+      ],
+      "check_corner_residual_mm": 0.10161494590538896,
+      "picking_uncertainty_native_px": 1.5,
+      "physical_accuracy_certified": false
+    },
+    "M06-nest": {
+      "method": "3 manually picked fixed-outline corners fitted with proper rigid Kabsch; fourth corner checked. All are from the same raster used for boundary registration, not independent held-out evidence.",
+      "target_native_uv": [
+        [
+          2155.5,
+          11.25
+        ],
+        [
+          2059.75,
+          106.25
+        ],
+        [
+          2123.25,
+          184.25
+        ],
+        [
+          2212.5,
+          98.0
+        ]
+      ],
+      "source_glb_xz_mm": [
+        [
+          31.942291259765625,
+          -24.0
+        ],
+        [
+          -64.05770874023438,
+          -23.666666666666668
+        ],
+        [
+          -71.72437540690103,
+          47.5
+        ],
+        [
+          16.608957926432282,
+          48.5
+        ]
+      ],
+      "fit_yaw_deg": -44.95445313589498,
+      "source_to_target_residual_mm": [
+        0.06366670470886564,
+        0.07376523367027332,
+        0.01317568623905206,
+        0.23205986441496315
+      ],
+      "check_corner_residual_mm": 0.23205986441496315,
+      "picking_uncertainty_native_px": 1.5,
+      "physical_accuracy_certified": false
+    },
+    "M11-dock": {
+      "method": "3 manually picked fixed-outline corners fitted with proper rigid Kabsch; fourth corner checked. All are from the same raster used for boundary registration, not independent held-out evidence.",
+      "target_native_uv": [
+        [
+          2676.25,
+          51.5
+        ],
+        [
+          2557.75,
+          170.0
+        ],
+        [
+          2763.5,
+          137.5
+        ],
+        [
+          2644.25,
+          256.75
+        ]
+      ],
+      "source_glb_xz_mm": [
+        [
+          105.33333333333333,
+          -7.000301361083984
+        ],
+        [
+          105.5,
+          110.99969863891602
+        ],
+        [
+          190.5,
+          -7.000301361083984
+        ],
+        [
+          190.83333333333331,
+          110.49969863891602
+        ]
+      ],
+      "fit_yaw_deg": 44.96318535448118,
+      "source_to_target_residual_mm": [
+        0.9012420600565753,
+        0.7603463603522254,
+        1.1012093631506363,
+        2.506260687956469
+      ],
+      "check_corner_residual_mm": 2.506260687956469,
+      "picking_uncertainty_native_px": 1.5,
+      "physical_accuracy_certified": false
+    }
+  },
+  "placements": [
+    {
+      "id": "M01-launcher",
+      "source_anchor_mm": [
+        518.995428,
+        -29.409088,
+        0.00022
+      ],
+      "position_mm": [
+        1149.41,
+        54.55,
+        0
+      ],
+      "clockwise_yaw_deg": 0,
+      "anchor_evidence": "Exact 74611 round-base center composed from source group 4; target native circle center (1623.5,1529). Source rail relationship retained. Circle provides position; track and setup photo resolve yaw."
+    },
+    {
+      "id": "M01-map",
+      "source_anchor_mm": [
+        99.0,
+        -23.1872,
+        130.0
+      ],
+      "position_mm": [
+        1044.23,
+        239.58,
+        0
+      ],
+      "clockwise_yaw_deg": -30,
+      "anchor_evidence": "Four-pad asymmetric pedestal outline; -30 degree clockwise yaw verified against printed footprint.",
+      "outline_residual": {
+        "free_yaw": -30.15,
+        "boundary_rmse_mm": 0.158,
+        "boundary_median_mm": 0.016,
+        "boundary_p95_mm": 0.389,
+        "points": 2225,
+        "roi": [
+          1390,
+          1185,
+          1575,
+          1380
+        ]
+      }
+    },
+    {
+      "id": "M02-mission",
+      "source_anchor_mm": [
+        -4.0,
+        0,
+        -4.0
+      ],
+      "position_mm": [
+        637.71,
+        541.82,
+        0
+      ],
+      "clockwise_yaw_deg": 45,
+      "anchor_evidence": "Fixed bottom frame outline; excludes pole/tube/seed envelope. Source seed pose remains unresolved.",
+      "outline_residual": {
+        "free_yaw": 45.654,
+        "boundary_rmse_mm": 1.385,
+        "boundary_median_mm": 0.573,
+        "boundary_p95_mm": 2.904,
+        "points": 1448,
+        "roi": [
+          835,
+          785,
+          975,
+          915
+        ]
+      }
+    },
+    {
+      "id": "M03-mission",
+      "source_anchor_mm": [
+        92.0001,
+        16.5568,
+        49.96565
+      ],
+      "position_mm": [
+        80,
+        658,
+        0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "Preserved exactly from r3: position (80,658,0), source anchor (92.0001,16.5568,49.96565), yaw 180."
+    },
+    {
+      "id": "M04-nest",
+      "source_anchor_mm": [
+        -23.0,
+        -3.2,
+        20.0
+      ],
+      "position_mm": [
+        126.46,
+        1024.88,
+        0
+      ],
+      "clockwise_yaw_deg": 135,
+      "anchor_evidence": "Three distinct two-pad lobes and their notches; fixed mounting-plane reference, not leaf envelope.",
+      "outline_residual": {
+        "free_yaw": 134.667,
+        "boundary_rmse_mm": 0.253,
+        "boundary_median_mm": 0.087,
+        "boundary_p95_mm": 0.638,
+        "points": 2767,
+        "roi": [
+          65,
+          55,
+          290,
+          285
+        ]
+      }
+    },
+    {
+      "id": "M04-leaf-a",
+      "source_anchor_mm": [
+        104,
+        13.6,
+        -24
+      ],
+      "position_mm": [
+        103.9305,
+        985.481,
+        20.0
+      ],
+      "clockwise_yaw_deg": 90,
+      "anchor_evidence": "2540 handle anchor seated against inner 3004 nest channel; one illustrative randomized order."
+    },
+    {
+      "id": "M04-leaf-b",
+      "source_anchor_mm": [
+        160,
+        13.6,
+        -24
+      ],
+      "position_mm": [
+        122.0721,
+        1029.2799,
+        20.0
+      ],
+      "clockwise_yaw_deg": 135,
+      "anchor_evidence": "2540 handle anchor seated against inner 3004 nest channel; one illustrative randomized order."
+    },
+    {
+      "id": "M04-leaf-c",
+      "source_anchor_mm": [
+        214.42268,
+        19.174812,
+        -24.844436
+      ],
+      "position_mm": [
+        165.8702,
+        1047.4225,
+        20.0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "2540 handle anchor seated against inner 3004 nest channel; one illustrative randomized order."
+    },
+    {
+      "id": "M05-mission",
+      "source_anchor_mm": [
+        22.0,
+        0,
+        44.0
+      ],
+      "position_mm": [
+        406.56,
+        1102.91,
+        0
+      ],
+      "clockwise_yaw_deg": 90,
+      "anchor_evidence": "Fixed 84x40 mm lower frame, 90 degree yaw. Raised source mechanism remains outside starting pose.",
+      "outline_residual": {
+        "free_yaw": 90.201,
+        "boundary_rmse_mm": 0.297,
+        "boundary_median_mm": 0.057,
+        "boundary_p95_mm": 0.67,
+        "points": 1533,
+        "roi": [
+          525,
+          0,
+          615,
+          155
+        ]
+      }
+    },
+    {
+      "id": "M06-nest",
+      "source_anchor_mm": [
+        -20.0,
+        0,
+        20.0
+      ],
+      "position_mm": [
+        1519.53,
+        1072.83,
+        0
+      ],
+      "clockwise_yaw_deg": -45,
+      "anchor_evidence": "Large asymmetric fixed base and runway outline. Common source transform with mycelium.",
+      "outline_residual": {
+        "free_yaw": -45.092,
+        "boundary_rmse_mm": 0.68,
+        "boundary_median_mm": 0.102,
+        "boundary_p95_mm": 1.139,
+        "points": 3244,
+        "roi": [
+          2050,
+          0,
+          2300,
+          200
+        ]
+      }
+    },
+    {
+      "id": "M06-mycelium",
+      "source_anchor_mm": [
+        -20.0,
+        0,
+        20.0
+      ],
+      "position_mm": [
+        1519.53,
+        1072.83,
+        0
+      ],
+      "clockwise_yaw_deg": -45,
+      "anchor_evidence": "Shares nest origin, position and yaw; source elevation and relative attachment preserved, never independently grounded."
+    },
+    {
+      "id": "M07-mission",
+      "source_anchor_mm": [
+        36.0,
+        -120.9982,
+        108.0
+      ],
+      "position_mm": [
+        575.84,
+        1081.34,
+        0
+      ],
+      "clockwise_yaw_deg": 0,
+      "anchor_evidence": "Asymmetric root outline at fixed base contact plane; lower confidence because source movable elements overlap this slice.",
+      "outline_residual": {
+        "free_yaw": -0.252,
+        "boundary_rmse_mm": 4.031,
+        "boundary_median_mm": 0.678,
+        "boundary_p95_mm": 8.836,
+        "points": 5233,
+        "roi": [
+          680,
+          0,
+          950,
+          220
+        ]
+      }
+    },
+    {
+      "id": "M08-spider",
+      "source_anchor_mm": [
+        12.0,
+        -16,
+        8.0
+      ],
+      "position_mm": [
+        1033.53,
+        720.37,
+        0
+      ],
+      "clockwise_yaw_deg": -45,
+      "anchor_evidence": "Central two-pad asymmetric bracket above farm. Distinct from snail near north tree.",
+      "outline_residual": {
+        "free_yaw": -46.153,
+        "boundary_rmse_mm": 1.634,
+        "boundary_median_mm": 0.166,
+        "boundary_p95_mm": 4.634,
+        "points": 1082,
+        "roi": [
+          1410,
+          540,
+          1530,
+          660
+        ]
+      }
+    },
+    {
+      "id": "M08-snail",
+      "source_anchor_mm": [
+        -76.0,
+        -16,
+        48.0
+      ],
+      "position_mm": [
+        753.84,
+        1059.21,
+        0
+      ],
+      "clockwise_yaw_deg": 120,
+      "anchor_evidence": "Two-pad rectangle near north tree. 120 degree yaw chosen by extended bracket and setup photo.",
+      "outline_residual": {
+        "free_yaw": 119.907,
+        "boundary_rmse_mm": 0.713,
+        "boundary_median_mm": 0.073,
+        "boundary_p95_mm": 1.619,
+        "points": 1044,
+        "roi": [
+          985,
+          85,
+          1100,
+          190
+        ]
+      }
+    },
+    {
+      "id": "M09-mission",
+      "source_anchor_mm": [
+        -48.0,
+        -8.8872,
+        -64.0
+      ],
+      "position_mm": [
+        1405.0,
+        599.81,
+        0
+      ],
+      "clockwise_yaw_deg": 45,
+      "anchor_evidence": "Stationary trunk base outline including asymmetric extension. Open source window remains unresolved.",
+      "outline_residual": {
+        "free_yaw": 45.38,
+        "boundary_rmse_mm": 2.214,
+        "boundary_median_mm": 0.959,
+        "boundary_p95_mm": 4.133,
+        "points": 2302,
+        "roi": [
+          1860,
+          670,
+          2080,
+          870
+        ]
+      }
+    },
+    {
+      "id": "M10-tree",
+      "source_anchor_mm": [
+        0,
+        0,
+        0
+      ],
+      "position_mm": [
+        1931.49,
+        761.24,
+        0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "Exact source round base (0,0,0), target native circle (2731.5,541.5); source branch direction and setup photo resolve yaw 180."
+    },
+    {
+      "id": "M10-tie",
+      "source_anchor_mm": [
+        0,
+        0,
+        0
+      ],
+      "position_mm": [
+        1931.49,
+        761.24,
+        0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "Source ring uses common tree transform to retain chain relation. Flat ring remains an unresolved starting pose."
+    },
+    {
+      "id": "M10-post",
+      "source_anchor_mm": [
+        0,
+        0,
+        0
+      ],
+      "position_mm": [
+        1931.49,
+        761.24,
+        0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "Legacy misleading name: chain, root record 25 (30104.dat copy). Common tree transform preserves source relation."
+    },
+    {
+      "id": "M10-cane",
+      "source_anchor_mm": [
+        120.0,
+        -3.2,
+        -120.0
+      ],
+      "position_mm": [
+        1931.27,
+        548.17,
+        0
+      ],
+      "clockwise_yaw_deg": 0,
+      "anchor_evidence": "Legacy misleading name: separate latch/post, root record 27 (submodel group 13). Registered to lower fixed footprint. Actual cane is baked into tree.",
+      "outline_residual": {
+        "free_yaw": 1.454,
+        "boundary_rmse_mm": 1.726,
+        "boundary_median_mm": 0.258,
+        "boundary_p95_mm": 5.261,
+        "points": 855,
+        "roi": [
+          2670,
+          760,
+          2790,
+          930
+        ]
+      }
+    },
+    {
+      "id": "M10-tree-tip",
+      "source_anchor_mm": [
+        0,
+        0,
+        0
+      ],
+      "position_mm": [
+        1931.49,
+        761.24,
+        0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "Attached upper branch uses tree source transform; not independently grounded."
+    },
+    {
+      "id": "M11-mission",
+      "source_anchor_mm": [
+        12,
+        0,
+        60
+      ],
+      "position_mm": [
+        1881.05,
+        1038.79,
+        0
+      ],
+      "clockwise_yaw_deg": 225,
+      "anchor_evidence": "Lower insert frame anchor; half-turn aligns latch axles x=28 with dock receiver x=132 around frame centers x=12/148. M11 z=60, others z=52."
+    },
+    {
+      "id": "M11-dock",
+      "source_anchor_mm": [
+        148.0,
+        0,
+        52.0
+      ],
+      "position_mm": [
+        1881.05,
+        1038.79,
+        0
+      ],
+      "clockwise_yaw_deg": 45,
+      "anchor_evidence": "Common fixed plate anchor (148,0,52), matched using asymmetric mounting outline. Receiver side disambiguates 180 degrees.",
+      "outline_residual": {
+        "free_yaw": 44.779,
+        "boundary_rmse_mm": 0.685,
+        "boundary_median_mm": 0.197,
+        "boundary_p95_mm": 1.69,
+        "points": 2837,
+        "roi": [
+          2530,
+          35,
+          2780,
+          270
+        ]
+      }
+    },
+    {
+      "id": "M12-mission",
+      "source_anchor_mm": [
+        12,
+        0,
+        52
+      ],
+      "position_mm": [
+        1276.77,
+        91.01,
+        0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "Lower insert frame anchor; half-turn aligns latch axles x=28 with dock receiver x=132 around frame centers x=12/148. M11 z=60, others z=52."
+    },
+    {
+      "id": "M12-dock",
+      "source_anchor_mm": [
+        148.0,
+        0,
+        52.0
+      ],
+      "position_mm": [
+        1276.77,
+        91.01,
+        0
+      ],
+      "clockwise_yaw_deg": 0,
+      "anchor_evidence": "Common fixed plate anchor (148,0,52), matched using asymmetric mounting outline. Receiver side disambiguates 180 degrees.",
+      "outline_residual": {
+        "free_yaw": -0.024,
+        "boundary_rmse_mm": 0.861,
+        "boundary_median_mm": 0.283,
+        "boundary_p95_mm": 1.978,
+        "points": 2837,
+        "roi": [
+          1740,
+          1360,
+          1880,
+          1590
+        ]
+      }
+    },
+    {
+      "id": "M13-mission",
+      "source_anchor_mm": [
+        12,
+        0,
+        52
+      ],
+      "position_mm": [
+        999.26,
+        629.65,
+        0
+      ],
+      "clockwise_yaw_deg": 180,
+      "anchor_evidence": "Lower insert frame anchor; half-turn aligns latch axles x=28 with dock receiver x=132 around frame centers x=12/148. M11 z=60, others z=52."
+    },
+    {
+      "id": "M13-dock",
+      "source_anchor_mm": [
+        148.0,
+        0,
+        52.0
+      ],
+      "position_mm": [
+        999.26,
+        629.65,
+        0
+      ],
+      "clockwise_yaw_deg": 0,
+      "anchor_evidence": "Common fixed plate anchor (148,0,52), matched using asymmetric mounting outline. Receiver side disambiguates 180 degrees.",
+      "outline_residual": {
+        "free_yaw": 0.21,
+        "boundary_rmse_mm": 0.722,
+        "boundary_median_mm": 0.02,
+        "boundary_p95_mm": 1.772,
+        "points": 2837,
+        "roi": [
+          1320,
+          610,
+          1530,
+          840
+        ]
+      }
+    }
+  ],
+  "remaining_uncertainty": [
+    "2000x1143 mm remains an approximate simulator field. Native grid anisotropy about 1.21 percent and conflicting 171/181 mm home margins are unresolved.",
+    "M07 root footprint has largest boundary RMS (4.031 approximate mm); source movable geometry overlaps the base slice.",
+    "M01 launcher and M10 tree circular datums have about 1.5 native-pixel picking uncertainty; yaw requires setup-photo/asymmetric mechanism evidence.",
+    "Not every model has three independently identifiable stationary source-to-pad correspondences. Four asymmetric fixed footprints have explicit three-corner rigid checks and a fourth-corner check; other fits use complete fixed outline and photos. All use the same reference image, not an independent validation sample.",
+    "M02 seeds, M05 root arm, M09 window, M10 cane/ring/chain articulation, M01 scan/drone/map poses and dock controls still need source-level start-pose work.",
+    "3D mechanisms remain static and may disagree with current scoring state. Approximate 2D collisions retain their existing transforms."
+  ]
+}

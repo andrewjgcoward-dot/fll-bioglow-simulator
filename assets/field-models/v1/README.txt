@@ -25,3 +25,11 @@ LIMITATIONS: placements and assembly starting poses are approximate. Mission mec
 so 3D does not display scoring-state changes or add 3D contact physics. The robot follows the live
 simulator position, heading, configured dimensions, wheels and arm motors. The 2D model remains
 the source of movement, collisions and scoring. This preview is not a field-registration authority.
+
+RENDER ALIGNMENT r4 (2026-10-06): manifest-r4.json is the active bundled placement file.
+Unchanged compressed assets retain their r3 URLs and original decoded SHA-256 hashes.
+See alignment-r4.json for official reference links, source anchors, crop registration,
+outline residuals, and remaining pose/calibration uncertainty. The 2000x1143 mm simulator
+frame remains approximate. Optional dockSites are render registrations; placement height
+is added to site height and dockYaw is relative to site yaw. Legacy packs without dockSites
+keep simulation dock transforms. No 2D physics, scoring or M03 placement changed here.

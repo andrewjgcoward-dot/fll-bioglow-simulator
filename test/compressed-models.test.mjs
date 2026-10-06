@@ -5,8 +5,8 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 import {decodeBundledAsset} from '../src/bundled-model-codec.js';import {openBundledModels,BUNDLED_MANIFEST_URL} from '../src/bundled-models.js';import {createBundledDecoder} from '../src/bundled-model-decoder.js';
 const root=new URL('./',BUNDLED_MANIFEST_URL),pack=JSON.parse(await readFile(BUNDLED_MANIFEST_URL,'utf8')),sha=b=>createHash('sha256').update(b).digest('hex');
 
-test('every compressed model matches independent decoding and original SHA-256; placement data is untouched',async()=>{
- const previous=JSON.parse(await readFile(new URL('manifest-r2.json',root),'utf8')),copy=structuredClone(pack);for(const a of copy.assets)delete a.transport;assert.deepEqual(copy,previous);
+test('compressed-only models preserve geometry hashes and alignment keeps assets unchanged',async()=>{
+ const previous=JSON.parse(await readFile(new URL('manifest-r3.json',root),'utf8'));assert.deepEqual(pack.assets,previous.assets);
  for(const a of pack.assets){const compressed=new Uint8Array(await readFile(new URL(a.transport.file,root))),original=await readBundledFixture(a),result=await decodeBundledAsset(compressed,a);assert.deepEqual(result.bytes,original,a.id);assert.equal(sha(result.bytes),a.sha256);}
  assert.ok(pack.assets.find(a=>a.id==='M07').transport.bytes<11*1024*1024);
 });

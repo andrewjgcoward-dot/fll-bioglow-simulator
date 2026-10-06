@@ -22,7 +22,8 @@ test('M03 rotates about its registered source anchor, with red pivots toward hom
  const previous=JSON.parse(await readFile(new URL('manifest.json',BUNDLED_MANIFEST_URL),'utf8'));
  const p=manifest.placements.find(p=>p.id==='M03-mission');
  assert.equal(p.yaw,180);assert.deepEqual(p.origin,[92.0001,16.5568,49.96565]);assert.deepEqual(p.position,[80,658,0]);
- const restored=structuredClone(manifest);for(const asset of restored.assets)delete asset.transport;restored.placements.find(p=>p.id==='M03-mission').yaw=0;
+ const historical=JSON.parse(await readFile(new URL('manifest-r3.json',BUNDLED_MANIFEST_URL),'utf8'));assert.deepEqual(p,historical.placements.find(p=>p.id==='M03-mission'));
+ const restored=structuredClone(historical);for(const asset of restored.assets)delete asset.transport;restored.placements.find(p=>p.id==='M03-mission').yaw=0;
  assert.deepEqual(restored,previous,'only M03 yaw changes; sources, bytes, dimensions and all other placements stay identical');
  const data=await readBundledFixture('M03');
  const source={manifest:{...manifest,assets:manifest.assets.filter(a=>a.id==='M03'),placements:[p]},read:async()=>data};

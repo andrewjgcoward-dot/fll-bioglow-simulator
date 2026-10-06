@@ -21,7 +21,7 @@ test('bundled model requests preserve the Pages subpath, cache assets, and repor
  assert.equal(calls[1].url,base.replace('manifest.json',asset.file));
  assert.ok(calls.every(c=>c.options.cache==='force-cache'&&c.options.mode==='same-origin'&&c.options.redirect==='error'));
  assert.equal(progress.at(-1),bytes.length);
- assert.ok(BUNDLED_MANIFEST_URL.pathname.endsWith('/assets/field-models/v1/manifest-r3.json'));
+ assert.ok(BUNDLED_MANIFEST_URL.pathname.endsWith('/assets/field-models/v1/manifest-r4.json'));
 });
 
 test('failed model retries reload only the failed URL and reject corrupt bytes',async()=>{

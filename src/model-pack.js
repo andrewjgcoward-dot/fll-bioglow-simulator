@@ -72,6 +72,12 @@ export function validatePackManifest(manifest, entries) {
   if (manifest?.schema !== 'bioglow-local-model-pack' || manifest.version !== 1 || manifest.units !== 'mm' || manifest.assetUnits !== 'm') fail('This model pack version is not supported. Use BIOGLOW pack version 1.');
   if (!Array.isArray(manifest.assets) || !manifest.assets.length || manifest.assets.length > 40 || !Array.isArray(manifest.placements) || !manifest.placements.length || manifest.placements.length > 64) fail('The pack needs a valid asset and placement list.');
   const ids = new Set(), placementIds = new Set(), vector = v => Array.isArray(v) && v.length === 3 && v.every(n => Number.isFinite(n) && Math.abs(n) <= 10000);
+  if (manifest.dockSites !== undefined) {
+    if (!manifest.dockSites || typeof manifest.dockSites !== 'object' || Array.isArray(manifest.dockSites)) fail('A dock site is invalid.');
+    for (const [key, site] of Object.entries(manifest.dockSites)) {
+      if (!['mine','city','farm'].includes(key) || !site || !vector(site.position) || !Number.isFinite(site.yaw) || Math.abs(site.yaw) > 360) fail('A dock site is invalid.');
+    }
+  }
   for (const asset of manifest.assets) {
     if (typeof asset.id !== 'string' || !/^[A-Za-z0-9_-]{1,50}$/.test(asset.id) || ids.has(asset.id)) fail('The pack contains invalid or duplicate model IDs.');
     if (typeof asset.file !== 'string' || !safeName(asset.file) || !asset.file.endsWith('.glb') || !entries.has(asset.file)) fail(`Missing model file: ${String(asset.file).slice(0,150)}`);

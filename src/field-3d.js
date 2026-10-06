@@ -5,6 +5,7 @@ import { openBundledModels } from './bundled-models.js';
 import { FW, FH, LINES, HOME_R } from './field.js';
 import { robotScene, robotMeshData } from './robot-3d.js';
 import { inspectPackZip, readPackEntry, validatePackManifest, validatePackGlb } from './model-pack.js';
+import { modelPlacementTransform } from './model-placement.js';
 
 const radians = n => n * Math.PI / 180;
 export const toFieldWorld = (x, y, height = 0) => [x, height, -y];
@@ -65,7 +66,7 @@ export function createField3D(panel, sim, options = {}) {
   const plain=plainMat(),matMaterial=new THREE.MeshStandardMaterial({map:plain,roughness:1});
   const mat=new THREE.Mesh(new THREE.PlaneGeometry(FW,FH),matMaterial);mat.rotation.x=-Math.PI/2;mat.position.set(FW/2,0,-FH/2);scene.add(mat);
   const table=new THREE.Mesh(new THREE.BoxGeometry(FW+26,28,FH+26),new THREE.MeshStandardMaterial({color:'#544934',roughness:1}));table.position.set(FW/2,-16,-FH/2);scene.add(table);
-  let photo=null,matMode='',destroyed=false,dirty=true,visible=true,follow=false,lastRender=0,lastRobotBuild=0,robotKey='',robotPending=true,activeController=null,modelGroup=null,modelPlacements=[],loadedName='',generation=0,pendingModelFrame=false;
+  let photo=null,matMode='',destroyed=false,dirty=true,visible=true,follow=false,lastRender=0,lastRobotBuild=0,robotKey='',robotPending=true,activeController=null,modelGroup=null,modelPlacements=[],modelDockSites={},loadedName='',generation=0,pendingModelFrame=false;
   new THREE.TextureLoader().load('assets/mat.jpg',t=>{if(destroyed){t.dispose();return;}photo=t;t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=Math.min(4,renderer.capabilities.getMaxAnisotropy());matMode='';dirty=true;},undefined,()=>{status.textContent='Mat photo unavailable; showing the plain mat. The mission models can still load.';});
   const robot=new THREE.Group();scene.add(robot);
   const robotMaterials=[new THREE.MeshStandardMaterial({vertexColors:true,roughness:.82,side:THREE.DoubleSide}),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.9,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1})];
@@ -92,7 +93,7 @@ export function createField3D(panel, sim, options = {}) {
 
   function clearModels() {
     if(modelGroup){scene.remove(modelGroup);disposeGroup(modelGroup);modelGroup=null;}
-    modelPlacements=[];loadedName='';unloadButton.disabled=true;dirty=true;renderer.renderLists.dispose();
+    modelPlacements=[];modelDockSites={};loadedName='';unloadButton.disabled=true;dirty=true;renderer.renderLists.dispose();
     panel.dataset.packState='empty';delete panel.dataset.modelCount;delete panel.dataset.triangles;delete panel.dataset.placementCount;delete panel.dataset.modelSource;
   }
   function cancelLoad() { activeController?.abort();activeController=null;generation++;cancelButton.hidden=true;retryButton.hidden=false; }
@@ -147,9 +148,9 @@ export function createField3D(panel, sim, options = {}) {
         await new Promise(resolve=>requestAnimationFrame(resolve));stillCurrent();
       }
       stillCurrent();const keep=resources(staging);for(const source of sources)disposeGroup(source,keep);
-      scene.add(staging);modelGroup=staging;modelPlacements=stagedPlacements;loadedName=String(manifest.title||'BIOGLOW model pack').slice(0,100);unloadButton.disabled=false;
+      scene.add(staging);modelGroup=staging;modelPlacements=stagedPlacements;modelDockSites=manifest.dockSites||{};loadedName=String(manifest.title||'BIOGLOW model pack').slice(0,100);unloadButton.disabled=false;
       update(); // Apply saved dock assignments immediately, including while idle.
-      status.textContent=`${loadedName} · ${manifest.assets.length} models · ${manifest.placements.length} placements loaded${file?' from local ZIP':''}. Approximate placements; mission mechanisms are static.`;
+      status.textContent=`${loadedName} · ${manifest.assets.length} models · ${manifest.placements.length} placements loaded${file?' from local ZIP':''}. Approximate alignment. Some starting poses, including roots, window and Forest Elder, still need correction; mechanisms are static.`;
       panel.dataset.packState='loaded';panel.dataset.modelCount=String(manifest.assets.length);panel.dataset.placementCount=String(stagedPlacements.length);panel.dataset.modelSource=file?'local':'bundled';pendingModelFrame=true;panel.dataset.triangles=String(Math.round(triangles));dirty=true;
     } catch(error) {
       disposeGroup(staging);for(const source of sources)disposeGroup(source);
@@ -169,7 +170,7 @@ export function createField3D(panel, sim, options = {}) {
       const id=o.id;present.add(id);let mesh=loose.get(id);if(!mesh){mesh=new THREE.Mesh(looseGeometry,looseMaterial);loose.set(id,mesh);scene.add(mesh);}mesh.scale.set(o.w,o.seed?8:24,o.h);mesh.position.set(o.x,o.seed?4:12,-o.y);mesh.rotation.y=-radians(o.r||0);mesh.visible=!o.lifted;
     }
     for(const [id,mesh] of loose)if(!present.has(id)){scene.remove(mesh);loose.delete(id);}
-    for(const {group,placement} of modelPlacements)if(placement.dockModel){const dock=sim.objects.find(o=>o.dock&&o.holds===placement.dockModel);if(dock){group.position.set(dock.x,placement.position[2],-dock.y);group.rotation.y=-radians(dock.r+(placement.dockYaw||0));}}
+    for(const {group,placement} of modelPlacements)if(placement.dockModel){const transform=modelPlacementTransform(placement,sim.objects,modelDockSites);group.position.set(...toFieldWorld(...transform.position));group.rotation.y=-radians(transform.yaw);}
     dirty=true;
   }
   let frameId;
