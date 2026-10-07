@@ -5,6 +5,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 import { Sim, DEFAULT_CONFIG, calibrateWheel, calibrateTrack, calibrateTop } from '../src/sim.js';
+import { prepareProgram } from '../src/compatibility.js';
 import { flatToAst, SPEC, node, lit } from '../src/blocks.js';
 import { programToJson, jsonToProgram } from '../src/blocks-json.js';
 import { importProject, exportLlsp3, makeZip, readZip, buildProject } from '../src/spike-io.js';
@@ -172,9 +173,9 @@ test('interrupting outside home during a match costs a token', () => {
 // One of every block: statements in a stack, each reporter inside a slot, plus variables and a My Block.
 function everything() {
   const main = [];
-  const sensorCond = () => node('isColor', { port: 'C', color: 'red' });
+  const sensorCond = () => node('isColor', { port: 'A', color: 'red' });
   for (const [t, s] of Object.entries(SPEC)) {
-    if (s.shape || s.end || ['note', 'setVar', 'changeVar'].includes(t)) continue;
+    if (s.unsupported || s.shape || s.end || ['note', 'setVar', 'changeVar'].includes(t)) continue;
     const n = node(t);
     if ('cond' in n) n.cond = sensorCond();
     if (n.body) n.body = [node('stopMove')];
@@ -184,14 +185,14 @@ function everything() {
   for (const [t, s] of Object.entries(SPEC)) {
     if (!['n', 'b'].includes(s.shape) || t === 'noteR') continue;
     const e = node(t);
-    for (const [k, d] of Object.entries(s.p || {})) if (d.kind === 'bool') e[k] = node('isPressed', { port: 'F' });
+    for (const [k, d] of Object.entries(s.p || {})) if (d.kind === 'bool') e[k] = node('isPressed', { port: 'A' });
     main.push(s.shape === 'b' ? node('if', { cond: e, body: [node('beep')] }) : node('show', { text: e }));
   }
   main.push({ t: 'setVar', name: 'speed', val: lit(30) });
   main.push({ t: 'changeVar', name: 'speed', val: { t: 'add', a: { t: 'var', name: 'speed' }, b: lit(5) } });
-  main.push({ t: 'call', name: 'jump', args: { height: { t: 'var', name: 'speed' }, fast: node('isPressed', { port: 'F' }) } });
+  main.push({ t: 'call', name: 'jump', args: { height: { t: 'var', name: 'speed' }, fast: node('isPressed', { port: 'A' }) } });
   const events = Object.entries(SPEC).filter(([t, s]) => s.shape === 'hat' && t !== 'start').map(([t]) => {
-    const hat = node(t); if ('cond' in hat) hat.cond = node('isPressed', { port: 'F' });
+    const hat = node(t); if ('cond' in hat) hat.cond = node('isPressed', { port: 'A' });
     return { hat, body: [node('beep')] };
   });
   return {
@@ -202,7 +203,7 @@ function everything() {
   };
 }
 
-test('every block survives SPIKE export and re-import', async () => {
+test('every supported block survives SPIKE export and re-import', async () => {
   const all = everything();
   const { zip, dropped } = exportLlsp3(all, 'all blocks');
   assert.equal(dropped, 0);
@@ -263,9 +264,9 @@ test('SPIKE export has the SPIKE App 3 file layout', () => {
   }
 });
 
-test('every block survives the block editor format', () => {
+test('every supported block survives the block editor format', () => {
   const all = everything();
-  all.stacks[0].push({ t: 'note', op: 'flipperlight_lightDisplayImageOn' }, node('show', { text: { t: 'noteR', op: 'flippersensors_force' } }));
+  // Unsupported placeholders are now rejected in compatibility.test.mjs.
   const back = jsonToProgram(programToJson(all));
   assert.deepEqual(JSON.parse(JSON.stringify(back.program)), JSON.parse(JSON.stringify(all)));
 });
@@ -422,20 +423,10 @@ test('the light matrix shows images, pixels and brightness', () => {
   assert.ok(timed.matrix.every(v => v === 0), 'turned off after the time');
 });
 
-test('sounds play for their length and volume can change', () => {
-  const sim = new Sim({}, { x: 1000, y: 600, h: 0 }, []);
-  const heard = []; sim.onSound = (e) => heard.push(e);
-  const t = runToEnd(sim, prog3([[
-    node('setVolume', { v: 40 }), node('changeVolume', { v: -10 }),
-    node('playSoundWait', { sound: 'Cat Meow 1' }),
-    node('beep', { note: 72, val: 0.25 }),
-    { t: 'setVar', name: 'vol', val: node('volume') }
-  ]], { sounds: { 'Cat Meow 1': 1.25 } }));
-  assert.equal(sim.vars.vol, 30);
-  assert.deepEqual(heard.filter(e => e.type !== 'stop').map(e => e.type + ':' + (e.name || e.note) + ':' + e.volume), ['sound:Cat Meow 1:30', 'beep:72:30']);
-  assert.ok(t > 1.45 && t < 1.7, 'waited for the sound and the beep: ' + t);
+test('sound assets are explicitly rejected', () => {
+  const sim = new Sim();
+  assert.throws(() => sim.run(prog3([[node('playSoundWait', { sound: 'Hello' })]], { sounds: { Hello: 2 } })), /sound assets|sound files/i);
 });
-
 
 test('calibration recovers a robot\'s real wheel size, spacing and speed', () => {
   // A pretend real robot with odd numbers; "measure" it with the three calibration programs.
@@ -577,11 +568,13 @@ test('imports and round-trips local SPIKE files', { skip: !fixtures && 'set SPIK
   if (manifestGaps.size) console.log('  manifest keys in SPIKE files but not in exports: ' + [...manifestGaps].join(', '));
 });
 
-test('the block editor ignores loose blocks and reads an empty "if" as false', () => {
+test('the block editor rejects loose blocks and reads a connected empty "if" as false', () => {
   const json = { blocks: { languageVersion: 0, blocks: [
     { type: 'sim_start', id: 'h', x: 0, y: 0, next: { block: { type: 'sim_if', id: 'i', inputs: { DO: { block: { type: 'sim_stopMove', id: 's' } } }, next: { block: { type: 'sim_wait', id: 'w', inputs: { val: { shadow: { type: 'sim_num', fields: { V: 2 } } } } } } } } },
     { type: 'sim_move', id: 'loose', x: 300, y: 300, fields: { dir: 'back', unit: 'cm' } }
   ] } };
+  assert.throws(() => jsonToProgram(json), /loose blocks/);
+  json.blocks.blocks.pop();
   const { program, warn } = jsonToProgram(json);
   assert.deepEqual(program.stacks[0].map(b => b.t), ['if', 'wait']);
   assert.equal(program.stacks[0][0].cond, null);

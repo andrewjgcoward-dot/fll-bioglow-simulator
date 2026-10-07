@@ -1,3 +1,4 @@
+import { prepareProgram } from '../src/compatibility.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeShare, decodeShare, shareUrl, codeFromHash } from '../src/share.js';
@@ -12,7 +13,7 @@ test('a share link carries the program, robot and start position', async () => {
   assert.ok(url.startsWith('https://example.org/sim/?x=1#p='));
   assert.match(url.split('#p=')[1], /^[A-Za-z0-9_-]+$/); // safe in links, email and chat
   const back = await decodeShare(codeFromHash(new URL(url).hash));
-  assert.deepEqual(back.program, strip(program));
+  assert.deepEqual(back.program, strip(prepareProgram(program)));
   assert.equal(back.cfg.wheel, 88);
   assert.deepEqual(back.start, start);
   assert.ok(url.length < 2000, `demo link is ${url.length} characters`);
@@ -29,8 +30,7 @@ test('cut-off or foreign links give a clear message', async () => {
   const code = await encodeShare({ program: DEMO(), cfg: {}, start: {} });
   await assert.rejects(decodeShare(code.slice(0, code.length / 2)), /damaged or incomplete/);
   await assert.rejects(decodeShare('not-a-link'), /damaged or incomplete/);
-  const other = await encodeShare({ program: { nope: 1 }, cfg: {}, start: {} });
-  await assert.rejects(decodeShare(other), /different version/);
+  await assert.rejects(encodeShare({ program: { nope: 1 }, cfg: {}, start: {} }), /missing stacks/);
 });
 
 test('a robot link carries only the robot setup', async () => {

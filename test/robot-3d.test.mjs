@@ -122,14 +122,14 @@ test('first load, Run and reset start up; Stop preserves a partly lowered hoop',
   sim.startMatch();sim.arms.E=45;sim.run(flatToAst([{t:'wait',val:1}]));assert.equal(sim.arms.E,0);assert.equal(robotScene(sim).arms[0].state,'Up');
 });
 
-test('Robot drive-pair edits update idle wheels and preserve runtime pair blocks until next launch',()=>{
+test('Robot drive-pair edits update idle wheels and preserve active physical wiring until next launch',()=>{
   const sim=new Sim();
   sim.arms.C=12;sim.arms.D=34;sim.configureDrivePair('CD');
   assert.deepEqual(robotScene(sim).wheels.map(w=>[w.port,w.angle]),[['C',12],['D',34]]);
   sim.run(flatToAst([{t:'pair',pair:'AB'},{t:'wait',val:2}]));sim.advance(.02);
   assert.equal(sim.pair,'AB');
   sim.configureDrivePair('EF');assert.equal(sim.cfg.pair,'EF');assert.equal(sim.pair,'AB');
-  assert.deepEqual(robotScene(sim).wheels.map(w=>w.port),['A','B']);
+  assert.deepEqual(robotScene(sim).wheels.map(w=>w.port),['C','D']);
   sim.stop();sim.configureDrivePair('CD');assert.equal(sim.pair,'CD');
   sim.run(flatToAst([{t:'wait',val:1}]));assert.equal(sim.pair,'CD');
 });

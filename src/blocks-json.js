@@ -2,6 +2,7 @@
 // (the format of Blockly.serialization.workspaces.save/load). Pure data, no Blockly needed.
 
 import { SPEC, lit, walkProgram } from './blocks.js';
+import { prepareProgram, CompatibilityError, supportedSymbolName } from './compatibility.js';
 
 const varId = (name) => 'var_' + name;
 const listId = (name) => 'list_' + name;
@@ -9,6 +10,7 @@ const listId = (name) => 'list_' + name;
 // ---------- program -> workspace JSON ----------
 
 export function programToJson(prog) {
+  prog = prepareProgram(prog);
   const vars = new Set(prog.vars || []), lists = new Set(prog.lists || []);
   walkProgram(prog, (n) => {
     if (n.t === 'var') vars.add(n.name);
@@ -18,7 +20,7 @@ export function programToJson(prog) {
   let argKinds = {}; // parameter kinds of the My Block being converted
   const slot = (d, e) => {
     const blank = e && (e.t === 'num' || e.t === 'text') ? e.v : d.def;
-    const lt = d.kind === 'text' || blank === '' ? 'sim_text' : 'sim_num';
+    const lt = d.kind === 'text' || e?.t === 'text' || blank === '' ? 'sim_text' : 'sim_num';
     const input = { shadow: { type: lt, fields: { V: lt === 'sim_num' ? Number(blank) || 0 : String(blank ?? '') } } };
     if (e && e.t !== 'num' && e.t !== 'text') input.block = expr(e);
     return input;
@@ -93,9 +95,27 @@ export function programToJson(prog) {
 
 export function jsonToProgram(json) {
   const warn = [];
+  const inspect = b => {
+    if (!b) return;
+    if (b.enabled === false || b.disabledReasons?.length) throw new CompatibilityError([`${b.type}: disabled blocks cannot be preserved; enable or remove the block.`]);
+    const type = b.type?.replace(/^sim_/, '');
+    if (!(SPEC[type] && !SPEC[type].unsupported && !['note', 'noteR'].includes(type)) && !['define', 'call', 'var', 'arg', 'arg_b', 'num', 'text'].includes(type))
+      throw new CompatibilityError([`${b.type} [${b.id || 'workspace'}]: ${SPEC[type]?.unsupported || 'unsupported block, including loose or disabled blocks'}`]);
+    for (const input of Object.values(b.inputs || {})) { inspect(input.block); inspect(input.shadow); }
+    inspect(b.next?.block);
+  };
+  for (const b of json?.blocks?.blocks || []) inspect(b);
+  for (const b of json?.blocks?.blocks || []) {
+    const t = b.type?.replace(/^sim_/, '');
+    if (t !== 'define' && SPEC[t]?.shape !== 'hat') throw new CompatibilityError([`${b.type}: loose blocks cannot be omitted; connect or remove the block.`]);
+  }
   const tops = ((json && json.blocks && json.blocks.blocks) || []).slice().sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
-  const varNames = {}, listNames = {};
-  for (const v of (json && json.variables) || []) (v.type === 'list' ? listNames : varNames)[v.id] = v.name;
+  const varNames = Object.create(null), listNames = Object.create(null);
+  for (const v of (json && json.variables) || []) {
+    if (!supportedSymbolName(v.name)) throw new CompatibilityError([`Unsupported name “${v.name}”; rename this symbol before importing or running.`]);
+    if (Object.hasOwn(varNames, v.id) || Object.hasOwn(listNames, v.id)) throw new CompatibilityError([`Duplicate workspace symbol ID: ${v.id}`]);
+    (v.type === 'list' ? listNames : varNames)[v.id] = v.name;
+  }
   const listOf = (f) => f && typeof f === 'object' ? (listNames[f.id] || f.name || f.id) : String(f ?? '');
   const varOf = (f) => f && typeof f === 'object' ? (varNames[f.id] || f.name || f.id) : String(f ?? '');
 
@@ -147,6 +167,7 @@ export function jsonToProgram(json) {
   const procs = {};
   for (const d of tops.filter(b => b.type === 'sim_define')) {
     const st = d.extraState || {};
+    if (procs[st.name]) throw new CompatibilityError([`Duplicate My Block name: ${st.name}`]);
     if (st.name) procs[st.name] = { params: st.params || [], body: chain(d.next && d.next.block) };
   }
   const events = tops.filter(b => { const t = b.type.replace(/^sim_/, ''); return t !== 'start' && SPEC[t] && SPEC[t].shape === 'hat'; })

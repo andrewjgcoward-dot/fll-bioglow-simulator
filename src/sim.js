@@ -1,3 +1,4 @@
+import { prepareProgram, CompatibilityError } from './compatibility.js';
 // Robot simulation: a two-wheel SPIKE Prime drive base on the BioGlow mat.
 // Heading is in degrees, clockwise from "north" (away from the home wall).
 
@@ -194,7 +195,7 @@ export class Sim {
     this.speedPct = 50;
     this.motorSpeed = { A: 75, B: 75, C: 75, D: 75, E: 75, F: 75 };
     this.arms = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
-    this.pair = this.cfg.pair;
+    this.pair = this.cfg.pair; this.physicalPair = this.cfg.pair;
     this.resetHub();
     this.trail = []; this.seen = []; this.trailT = 0;
     this.hit = null;
@@ -458,6 +459,8 @@ export class Sim {
   // Launch a program tree. Outside a match every run starts on a fresh field.
   // In a match the field stays as it is and the robot relaunches from home.
   run(program) {
+    program = prepareProgram(program); // Validate before reset, motion or state changes.
+    this.exited = false;
     if (!this.matchOn) this.reset();
     else {
       if (!this.inHome()) { this.log('Relaunch from home: robot moved back to the start position.'); this.placeRobot(); }
@@ -472,7 +475,7 @@ export class Sim {
     this.program = program;
     this.vars = {}; for (const v of program.vars || []) this.vars[v] = 0;
     this.lists = {}; for (const l of program.lists || []) this.lists[l] = [];
-    this.speedPct = 50; this.pair = this.cfg.pair; this.cmPerRot = null;
+    this.speedPct = 50; this.pair = this.cfg.pair; this.physicalPair = this.cfg.pair; this.cmPerRot = null;
     this.motorSpeed = { A: 75, B: 75, C: 75, D: 75, E: 75, F: 75 };
     this.t = 0; this.timer0 = 0; this.noted = new Set();
     this.resetHub();
@@ -502,8 +505,8 @@ export class Sim {
     const scope = { args: {} };
     switch (h.t) {
       case 'whenColor': return this.val({ t: 'isColor', port: h.port, color: h.color }, scope);
-      case 'whenDistance': return this.val({ t: 'isDistance', port: h.port, cmp: h.cmp, val: h.val }, scope);
-      case 'whenPressed': { const p = h.port === this.cfg.forcePort && this.pressed(); return h.opt === 'released' ? !p : p; }
+      case 'whenDistance': return this.val({ t: 'isDistance', port: h.port, cmp: h.cmp, val: h.val, unit: h.unit }, scope);
+      case 'whenPressed': return h.port === this.cfg.forcePort && (h.opt === 'released' ? !this.pressed() : this.pressed());
       case 'whenButton': return h.event === 'released' ? !this.buttons[h.button] : !!this.buttons[h.button];
       case 'whenTimer': return (this.t - this.timer0) > this.num(h.val, scope);
       case 'whenCondition': return this.bool(h.cond, scope);
@@ -550,10 +553,10 @@ export class Sim {
   }
 
   // A Robot-tab edit applies immediately while idle. During a run, keep the
-  // pair chosen by the running program; the new wiring applies next launch.
+  // physical wheel mapping and selected program pair; saved wiring applies next launch.
   configureDrivePair(pair) {
     this.cfg.pair = String(pair);
-    if (!this.running) this.pair = this.cfg.pair;
+    if (!this.running) { this.pair = this.cfg.pair; this.physicalPair = this.cfg.pair; }
   }
 
   finish(msg) { this.running = false; this.stopMotion(); this.sound({ type: 'stop' }); this.log(msg); }
@@ -597,17 +600,17 @@ export class Sim {
       case 'contains': return S(e.a).toLowerCase().includes(S(e.b).toLowerCase());
       case 'isColor': return e.port === cfg.colorPort && s.color === e.color;
       case 'isReflection': return e.port === cfg.colorPort && cmp(s.reflect, e.cmp, N(e.val));
-      case 'isDistance': return e.port === cfg.distPort && (s.dist === null ? e.cmp === '>' : cmp(s.dist, e.cmp, N(e.val)));
-      case 'isPressed': return e.port === cfg.forcePort && this.pressed();
+      case 'isDistance': return e.port === cfg.distPort && cmp(this.distanceValue(e.unit), e.cmp, N(e.val));
+      case 'isPressed': return e.port === cfg.forcePort && (e.opt === 'released' ? !this.pressed() : this.pressed());
       case 'color': return e.port === cfg.colorPort ? (COLOR_ID[s.color] ?? -1) : -1;
       case 'reflection': return e.port === cfg.colorPort ? s.reflect : 0;
-      case 'distance': return e.port !== cfg.distPort ? -1 : s.dist === null ? 200 : Math.round(s.dist * 10) / 10;
+      case 'distance': return e.port !== cfg.distPort ? -1 : this.distanceValue(e.unit);
       case 'angle': return e.axis === 'yaw' ? Math.round(s.yaw) : 0;
       case 'timer': return Math.round((this.t - this.timer0) * 1000) / 1000;
-      case 'motorPos': { const a = this.arms[e.port] || 0; return Math.round(((a % 360) + 360) % 360); }
+      case 'motorPos': { const a = this.arms[e.port] || 0; return Math.round(((a % 360) + 360) % 360) % 360; }
       case 'motorRel': return Math.round((this.arms[e.port] || 0) - (this.relZero[e.port] || 0));
       case 'volume': return this.volume;
-      case 'buttonPressed': return !!this.buttons[e.button];
+      case 'buttonPressed': return e.event === 'released' ? !this.buttons[e.button] : !!this.buttons[e.button];
       case 'listContents': {
         const l = this.lists[e.list] || [];
         return l.every(x => String(x).length === 1) ? l.join('') : l.join(' ');
@@ -616,8 +619,12 @@ export class Sim {
       case 'listIndexOf': { const l = this.lists[e.list] || [], x = this.val(e.item, scope); return l.findIndex(v => compare(v, x) === 0) + 1; }
       case 'listLength': return (this.lists[e.list] || []).length;
       case 'listContains': { const x = this.val(e.item, scope); return (this.lists[e.list] || []).some(v => compare(v, x) === 0); }
-      default: return 0; // noteR and anything unknown
+      default: throw new CompatibilityError([`${e.t}: unsupported reporter`]);
     }
+  }
+  distanceValue(unit = 'cm') {
+    const cm = this.sens.dist === null ? 200 : clamp(this.sens.dist, 0, 200);
+    return unit === '%' ? cm / 2 : unit === 'inches' ? cm / 2.54 : cm;
   }
   num(e, scope) { const v = this.val(e, scope); if (v === true) return 1; if (v === false) return 0; const n = Number(v); return isFinite(n) || Math.abs(n) === Infinity ? n : 0; }
   str(e, scope) { const v = this.val(e, scope); return typeof v === 'number' ? fmtNum(v) : String(v); }
@@ -659,13 +666,13 @@ export class Sim {
       case 'stopMove': this.setDrive(null); break;
       case 'speed': this.speedPct = clamp(N(s.pct), -100, 100); break;
       case 'pair': this.pair = String(s.pair || this.cfg.pair); break;
-      case 'setDistance': { const cm = N(s.cm); this.cmPerRot = cm > 0 ? cm : null; break; }
+      case 'setDistance': { const cm = N(s.cm) * (s.unit === 'inches' ? 2.54 : 1); this.cmPerRot = cm > 0 ? cm : null; break; }
       case 'motor': yield* this.motorFor(ports(s.port), s.dir === 'counterclockwise' ? -1 : 1, N(s.val), s.unit); break;
       case 'motorGoTo': yield* this.motorGoTo(ports(s.port), s.dir, N(s.pos)); break;
       case 'motorStart':
-        for (const p of ports(s.port)) { this.cancelMotor(p); this.motorRun[p] = s.dir === 'counterclockwise' ? -1 : 1; }
+        for (const p of ports(s.port)) { this.cancelPairedDrive(p); this.cancelMotor(p); this.motorRun[p] = s.dir === 'counterclockwise' ? -1 : 1; }
         break;
-      case 'motorStop': for (const p of ports(s.port)) { this.cancelMotor(p); delete this.motorRun[p]; } break;
+      case 'motorStop': for (const p of ports(s.port)) { this.cancelPairedDrive(p); this.cancelMotor(p); delete this.motorRun[p]; } break;
       case 'motorSpeed': for (const p of ports(s.port)) this.motorSpeed[p] = clamp(N(s.pct), -100, 100); break;
       case 'motorSetRel': for (const p of ports(s.port)) this.relZero[p] = (this.arms[p] || 0) - N(s.val); break;
       case 'show': this.display = this.str(s.text, scope); this.matrix.fill(0); break;
@@ -721,8 +728,15 @@ export class Sim {
       case 'ifElse': yield* this.execList(B(s.cond) ? s.body : s.else, th, scope); break;
       case 'waitUntil': while (!B(s.cond)) { yield; if (!this.running || th.stopped) return; } break;
       case 'stop':
-        if (s.opt === 'all') { this.finish('A “stop all” block ended the program.'); return; }
+        if (s.opt === 'all' || s.opt === 'program') {
+          this.exited = s.opt === 'program';
+          for (const other of this.threads) other.stopped = true;
+          this.finish(this.exited ? 'Stop and exit program.' : 'A “stop all” block stopped all stacks.'); return;
+        }
         th.stopped = true; return;
+      case 'stopOthers':
+        for (const other of this.threads) if (other !== th) { other.stopped = true; other.done = true; }
+        this.stopMotion(); this.sound({ type: 'stop' }); break;
       case 'resetYaw': this.yawZero = this.pose.h; this.sens = this.readSensors(this.pose); break;
       case 'resetTimer': this.timer0 = this.t; break;
       case 'setVar': this.vars[s.name] = this.val(s.val, scope); break;
@@ -738,8 +752,7 @@ export class Sim {
         th.depth--;
         break;
       }
-      case 'note': this.noteOnce(s, 'Skipped a block that isn’t simulated yet: ' + s.op); break;
-      default: break;
+      default: throw new CompatibilityError([`${s.op || s.t}: unsupported command`]);
     }
   }
 
@@ -763,19 +776,30 @@ export class Sim {
     const s = clamp(steer, -100, 100), v = this.speedPct, slow = v * (1 - 2 * Math.abs(s) / 100);
     return s >= 0 ? { L: v, R: slow } : { L: slow, R: v };
   }
-  setDrive(f) {
+  cancelPairedDrive(port) {
+    if ((this.driveAction || this.drive)?.pair.includes(port)) this.cancelDrive();
+  }
+  cancelDrive() {
+    // The selected pair may have changed since this movement began. Release
+    // only the active movement; leave independent motor actions untouched.
     if (this.driveAction) { this.driveAction.done = true; this.driveAction = null; }
     this.lastBump = null;
-    this.drive = f;
+    this.drive = null;
+  }
+  setDrive(f) {
+    this.cancelDrive();
+    for (const p of this.pair) { this.cancelMotor(p); delete this.motorRun[p]; }
+    this.drive = f ? { ...f, pair: this.pair } : null;
   }
   wheelDegrees(val, unit) {
     const circ = this.cmPerRot ? this.cmPerRot * 10 : Math.PI * this.cfg.wheel;
     return unit === 'cm' ? val * 10 / circ * 360 : unit === 'in' ? val * 25.4 / circ * 360 : unit === 'rotations' ? val * 360 : val;
   }
   *driveFor(f, val, unit) {
+    if (unit === 'seconds') { val = clamp(val, 0, 60); if (!val) return; }
     if (val < 0) { val = -val; f = { L: -f.L, R: -f.R }; }
     this.setDrive(null);
-    const a = { L: f.L, R: f.R, t: 0, prog: 0, stall: 0, done: false };
+    const a = { L: f.L, R: f.R, pair: this.pair, start: { ...this.arms }, t: 0, prog: 0, stall: 0, done: false };
     if (unit === 'seconds') { a.mode = 'time'; a.target = val; } else { a.mode = 'deg'; a.target = this.wheelDegrees(val, unit); }
     if (a.mode === 'deg' && (a.target <= 0 || Math.max(Math.abs(a.L), Math.abs(a.R)) < 1e-6)) return;
     this.driveAction = a;
@@ -784,11 +808,12 @@ export class Sim {
   }
   cancelMotor(p) { const a = this.motorActions[p]; if (a) { a.done = true; delete this.motorActions[p]; } }
   *motorFor(ports, sign, val, unit) {
-    if (ports.some(p => this.pair.includes(p))) this.noteOnce({ op: 'drive-motor' }, 'Note: a motor block uses a drive motor port; it only turns that motor’s dial here.');
+    if (unit === 'seconds') { val = clamp(val, 0, 60); if (!val) return; }
+    if (!val) return;
     if (val < 0) { sign = -sign; val = -val; }
     const acts = ports.map(p => {
-      this.cancelMotor(p); delete this.motorRun[p];
-      const a = { sign, mode: unit === 'seconds' ? 'time' : 'deg', target: unit === 'seconds' ? val : unit === 'rotations' ? val * 360 : val, prog: 0, t: 0, stall: 0, done: false };
+      this.cancelPairedDrive(p); this.cancelMotor(p); delete this.motorRun[p];
+      const a = { sign, start: this.arms[p] || 0, progressSign: sign * Math.sign(this.motorSpeed[p] || 1), mode: unit === 'seconds' ? 'time' : 'deg', target: unit === 'seconds' ? val : unit === 'rotations' ? val * 360 : val, prog: 0, t: 0, stall: 0, done: false };
       this.motorActions[p] = a; return a;
     });
     while (acts.some(a => !a.done)) { yield; if (!this.running) return; }
@@ -797,8 +822,8 @@ export class Sim {
     const acts = ports.map(p => {
       const cur = (((this.arms[p] || 0) % 360) + 360) % 360, target = ((pos % 360) + 360) % 360, d = target - cur;
       const delta = dir === 'clockwise' ? ((d % 360) + 360) % 360 : dir === 'counterclockwise' ? -(((-d % 360) + 360) % 360) : ((d % 360) + 540) % 360 - 180;
-      this.cancelMotor(p); delete this.motorRun[p];
-      const a = { sign: delta < 0 ? -1 : 1, mode: 'deg', target: Math.abs(delta), prog: 0, t: 0, stall: 0, done: Math.abs(delta) < 0.5 };
+      this.cancelPairedDrive(p); this.cancelMotor(p); delete this.motorRun[p];
+      const a = { sign: delta < 0 ? -1 : 1, start: this.arms[p] || 0, progressSign: (delta < 0 ? -1 : 1) * Math.sign(this.motorSpeed[p] || 1), mode: 'deg', target: Math.abs(delta), prog: 0, t: 0, stall: 0, done: Math.abs(delta) < 0.5 };
       if (!a.done) this.motorActions[p] = a;
       return a;
     });
@@ -815,9 +840,9 @@ export class Sim {
     if (this.running) {
       this.t += dt;
       for (const th of this.threads) {
-        if (th.done || !this.running) continue;
+        if (th.done || th.stopped || !this.running) { if (th.stopped) th.done = true; continue; }
         try { if (th.gen.next(dt).done) th.done = true; }
-        catch (err) { th.done = true; this.log('Error in program: ' + err.message); }
+        catch (err) { th.done = true; this.finish('Error in program: ' + err.message); }
       }
       if (this.running) this.checkEvents();
       this.threads = this.threads.filter(th => !th.done);
@@ -828,17 +853,47 @@ export class Sim {
 
     // Drive wheels.
     const a = this.driveAction && !this.driveAction.done ? this.driveAction : null;
-    const cmd = a || this.drive;
-    let fast = 0, stalled = false;
+    const paired = a || this.drive;
+    const [physicalLeft, physicalRight] = this.physicalPair;
+    // Motor shaft clockwise is positive. Mirrored drive installation means the
+    // left shaft turns counterclockwise for forward chassis travel.
+    const portCommand = p => {
+      const act = this.motorActions[p], run = this.motorRun[p];
+      if (act || run) {
+        let pct = (act ? act.sign : run) * (this.motorSpeed[p] ?? 75);
+        if (act?.mode === 'deg') pct = Math.sign(pct) * Math.min(Math.abs(pct), Math.max(0, act.target - act.prog) / dt / cfg.top * 100);
+        return pct;
+      }
+      if (paired) return p === paired.pair[0] ? -paired.L : p === paired.pair[1] ? paired.R : 0;
+      return 0;
+    };
+    const individualDrive = [physicalLeft, physicalRight].some(p => this.motorActions[p] || this.motorRun[p]);
+    const cmd = paired || individualDrive ? { L: -portCommand(physicalLeft), R: portCommand(physicalRight) } : null;
+    let stalled = false;
+    // Cap actual shaft travel, after acceleration, at a bounded action's endpoint.
+    // Opposite-direction inertia is allowed and must be earned back, not counted
+    // toward completion. Each action keeps its original ports and shaft origin.
+    const limitTravel = (p, travel) => {
+      const act = this.motorActions[p];
+      if (act?.mode === 'deg' && travel * act.progressSign > 0)
+        return act.progressSign * Math.min(Math.abs(travel), Math.max(0, act.target - (this.arms[p] - act.start) * act.progressSign));
+      if (a?.mode === 'deg' && a.pair.includes(p)) {
+        const factor = p === a.pair[0] ? -a.L : a.R, sign = Math.sign(factor);
+        const target = a.target * Math.abs(factor) / Math.max(Math.abs(a.L), Math.abs(a.R));
+        if (travel * sign > 0) return sign * Math.min(Math.abs(travel), Math.max(0, target - (this.arms[p] - a.start[p]) * sign));
+      }
+      return travel;
+    };
     if (!cmd) this.vel = { L: 0, R: 0 };
     if (cmd) {
       // Wheel degrees per second. With a speed-up ramp the wheels accelerate; slowing down is instant (brake).
       let L = cmd.L / 100 * cfg.top, R = cmd.R / 100 * cfg.top;
       if (cfg.ramp > 0) {
         const step = cfg.top / cfg.ramp * dt, v = this.vel || { L: 0, R: 0 };
-        const toward = (cur, goal) => Math.abs(goal) <= Math.abs(cur) && Math.sign(goal) === Math.sign(cur) ? goal : cur + clamp(goal - cur, -step, step);
+        const toward = (cur, goal) => goal === 0 || Math.abs(goal) <= Math.abs(cur) && Math.sign(goal) === Math.sign(cur) ? goal : cur + clamp(goal - cur, -step, step);
         L = toward(v.L, L); R = toward(v.R, R);
       }
+      L = -limitTravel(physicalLeft, -L * dt) / dt; R = limitTravel(physicalRight, R * dt) / dt;
       this.vel = { L, R };
       const k = Math.PI * cfg.wheel / 360;
       const vL = L * k, vR = R * k, v = (vL + vR) / 2, w = (vL - vR) / cfg.track;
@@ -850,22 +905,13 @@ export class Sim {
       else {
         this.dragHooks(this.pose, np);
         this.pose = np; this.hit = null;
-        fast = Math.max(Math.abs(L), Math.abs(R)) * dt;
-        const [pl, pr] = this.pair.split('');
-        if (pl in this.arms) this.arms[pl] += L * dt;
-        if (pr in this.arms) this.arms[pr] += R * dt;
+        if (physicalLeft in this.arms) this.arms[physicalLeft] -= L * dt;
+        if (physicalRight in this.arms) this.arms[physicalRight] += R * dt;
       }
       this.trailT += dt;
       if (!stalled && this.trailT > 0.06) {
         this.trailT = 0; this.trail.push([this.pose.x, this.pose.y]); if (this.trail.length > 2000) this.trail.shift();
       }
-    }
-    if (a) {
-      a.t += dt;
-      if (a.mode === 'time') { if (a.t >= a.target) a.done = true; }
-      else { a.prog += fast; if (a.prog >= a.target) a.done = true; }
-      if (stalled) { a.stall += dt; if (a.stall > 1) { a.done = true; this.log('Motors stalled for 1 s, moving to the next block.'); } }
-      else a.stall = 0;
     }
     this.sens = this.readSensors(this.pose);
     // Remember where the color sensor saw something other than plain mat, to draw on the field.
@@ -874,34 +920,43 @@ export class Sim {
       if (!last || Math.hypot(last[0] - sp[0], last[1] - sp[1]) > 8) { this.seen.push([sp[0], sp[1], this.sens.color]); if (this.seen.length > 3000) this.seen.shift(); }
     }
 
-    // Attachment motors: "run for" actions and motors started with "start motor".
+    // Every selected shaft runs, including pairs that contain attachment ports.
+    // Only the configured physical drive wheels change chassis pose.
+    // A chassis collision belongs to this action only when it commands a
+    // physical wheel. Disjoint attachments and idle shafts do not inherit it.
+    let pairHit = stalled && a?.pair.split('').some(p =>
+      (p === physicalLeft || p === physicalRight) && portCommand(p) !== 0);
     for (const p of Object.keys(this.arms)) {
       const act = this.motorActions[p], run = this.motorRun[p];
-      if (!act && !run) continue;
-      const spd = this.motorSpeed[p] ?? 75;
-      const ds = Math.abs(spd) / 100 * cfg.top * dt;
-      const sign = (act ? act.sign : run) * (spd < 0 ? -1 : 1);
-      const st = act && act.mode === 'deg' ? Math.min(ds, act.target - act.prog) : ds;
-      const next = this.arms[p] + sign * st;
-      const hit = this.pair.includes(p) ? null : this.tryArm(p, next);
-      if (hit) {
-        // SPIKE motors end a "run for" block when they stall.
-        if (act) {
-          act.stall += dt;
-          if (act.stall > 0.3) {
-            act.done = true; delete this.motorActions[p];
-            this.log(hit === 'the mat' ? 'Arm ' + p + ' pressed down on the mat.' : hit === 'its top stop' ? 'Arm ' + p + ' is all the way up.' : 'Arm ' + p + ' pressed against ' + hit + '.');
-          }
-        }
-      } else {
-        this.arms[p] = next;
-        if (act) {
-          act.stall = 0; act.t += dt;
-          if (act.mode === 'time') { if (act.t >= act.target) act.done = true; }
-          else { act.prog += st; if (act.prog >= act.target - 1e-6) act.done = true; }
-          if (act.done) delete this.motorActions[p];
+      if (!act && !run && !paired?.pair.includes(p)) continue;
+      let hit = null;
+      if (p !== physicalLeft && p !== physicalRight) {
+        const travel = limitTravel(p, portCommand(p) / 100 * cfg.top * dt);
+        const next = this.arms[p] + travel;
+        hit = this.tryArm(p, next);
+        if (!hit) this.arms[p] = next;
+        else if (paired?.pair.includes(p)) pairHit = true;
+      } else if (stalled) hit = this.hit;
+      if (act) {
+        act.t += dt;
+        act.prog = (this.arms[p] - act.start) * act.progressSign;
+        act.stall = hit ? act.stall + dt : 0;
+        const stallLimit = p === physicalLeft || p === physicalRight ? 1 : 0.3;
+        if ((act.mode === 'time' ? act.t >= act.target : act.prog >= act.target - 1e-6) || act.stall > stallLimit) {
+          act.done = true; delete this.motorActions[p];
+          if (act.stall > stallLimit) this.log(hit === 'the mat' ? 'Arm ' + p + ' pressed down on the mat.' : hit === 'its top stop' ? 'Arm ' + p + ' is all the way up.' : 'Arm ' + p + ' pressed against ' + hit + '.');
         }
       }
+    }
+    if (a) {
+      a.t += dt;
+      a.prog = Math.min(...a.pair.split('').flatMap((p, i) => {
+        const factor = i === 0 ? -a.L : a.R;
+        return factor ? [(this.arms[p] - a.start[p]) * Math.sign(factor) * Math.max(Math.abs(a.L), Math.abs(a.R)) / Math.abs(factor)] : [];
+      }));
+      if (a.mode === 'time' ? a.t >= a.target : a.prog >= a.target - 1e-6) a.done = true;
+      a.stall = pairHit ? a.stall + dt : 0;
+      if (a.stall > 1) { a.done = true; this.log('Motors stalled for 1 s, moving to the next block.'); }
     }
 
     this.runMechanisms(dt);

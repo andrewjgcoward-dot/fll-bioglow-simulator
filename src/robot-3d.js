@@ -30,7 +30,7 @@ export function robotScene(sim) {
     return { ...arm, motor, geometry, pivot, tip, lift,
       state: lift ? geometry.tilt < 1 ? 'Down' : geometry.tilt > 89 ? 'Up' : 'Partway' : 'Sweeping' };
   });
-  const pair = String(sim.pair || cfg.pair);
+  const pair = String(sim.physicalPair || cfg.pair);
   return { cfg, deck, pose: { ...sim.pose }, arms,
     wheels: [0, 1].map(i => ({ x: (i ? 1 : -1) * cfg.track / 2, angle: sim.arms[pair[i]] || 0, port: pair[i] })),
     matrix: sim.matrix || [], color: sim.sens?.color || 'none',

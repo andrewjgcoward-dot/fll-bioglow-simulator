@@ -85,7 +85,7 @@ test('left and continuous spins use official SPIKE steering serialization', asyn
 
 test('numeric steering, reporter inputs and their shadow defaults survive export', async () => {
   const source = program([
-    node('steer', { steer: -35, val: 2, unit: 'in' }),
+    node('steer', { steer: -35, val: 2, unit: 'rotations' }),
     node('steer', { steer: 0 }),
     node('steer', { steer: { t: 'add', a: lit(20), b: lit(10) } }),
     node('startSteer', { steer: { t: 'var', name: 'steering' } })

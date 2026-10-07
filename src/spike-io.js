@@ -3,6 +3,8 @@
 // scratch.sb3 is another zip holding a Scratch 3 project.json.
 
 import { SPEC, lit, walkProgram } from './blocks.js';
+import { prepareProgram, CompatibilityError, learnSensorPort } from './compatibility.js';
+import { validateNativeProject } from './spike-validation.js';
 
 // Names used by a program: variables, lists and broadcast messages.
 export function namesIn(prog) {
@@ -114,8 +116,7 @@ const procKinds = (code) => (code.match(/%[sbn]/g) || []).map(t => t === '%b' ? 
 // Scratch 3 project.json -> { program, warn, cfg }. cfg holds robot settings found in the blocks.
 export function convertProject(proj) {
   const targets = proj.targets || [];
-  const target = targets.find(t => Object.values(t.blocks || {}).some(b => b && b.opcode === 'flipperevents_whenProgramStarts'));
-  if (!target) throw new Error('No “when program starts” stack found.');
+  const target = validateNativeProject(proj);
   const blocks = target.blocks;
   const warn = [], cfg = {}, skipped = {}, vars = new Set(), lists = new Set(), sounds = {};
   for (const t of targets) {
@@ -126,12 +127,9 @@ export function convertProject(proj) {
 
   const literal = (v) => lit(v);
   const shadowValue = (sb) => { const f = sb.fields && Object.keys(sb.fields)[0]; return f ? String(sb.fields[f][0]) : ''; };
-  const note = (op, reporter) => { skipped[op] = (skipped[op] || 0) + 1; return reporter ? { t: 'noteR', op } : { t: 'note', op }; };
+  const note = op => { throw new CompatibilityError([`${op}: unsupported block`]); };
   const learn = (t, n) => {
-    if (t === 'pair' && !cfg.pair) cfg.pair = n.pair;
-    if (['isColor', 'isReflection', 'color', 'reflection'].includes(t) && !cfg.colorPort) cfg.colorPort = n.port;
-    if (['isDistance', 'distance'].includes(t) && !cfg.distPort) cfg.distPort = n.port;
-    if (t === 'isPressed' && !cfg.forcePort) cfg.forcePort = n.port;
+    learnSensorPort(cfg, n);
   };
 
   const menuValue = (b, key) => {
@@ -197,6 +195,7 @@ export function convertProject(proj) {
     const proto = blocks[b.inputs.custom_block[1]];
     if (!proto || !proto.mutation) continue;
     const code = proto.mutation.proccode, names = JSON.parse(proto.mutation.argumentnames || '[]'), kinds = procKinds(code);
+    if (Object.values(byCode).some(d => d.name === procName(code))) throw new CompatibilityError([`My Block ${code}: duplicate or colliding procedure names`]);
     byCode[code] = { name: procName(code), params: names.map((name, i) => ({ name: String(name), kind: kinds[i] || 'n' })), defId: b };
   }
 
@@ -214,7 +213,8 @@ export function convertProject(proj) {
   };
   function stmtList(id) {
     const out = [];
-    while (id && blocks[id] && out.length < 2000) { out.push(convStmt(blocks[id])); id = blocks[id].next; }
+    while (id && blocks[id] && out.length < 100000) { out.push(convStmt(blocks[id])); id = blocks[id].next; }
+    if (id) throw new CompatibilityError(['Stack exceeds the supported import size; no blocks were imported.']);
     return out;
   }
 
@@ -236,13 +236,14 @@ export function convertProject(proj) {
   if (checkOnce) warn.push('Tip: “if … then stop moving” checks the sensor once, right away' + (checkOnce > 1 ? ' (' + checkOnce + ' places)' : '') + '. To stop on a line, use “start moving”, then “wait until … is color”, then “stop moving”.');
   const sk = Object.keys(skipped);
   if (sk.length) warn.push('Shown in gray, not simulated yet: ' + sk.map(k => k + (skipped[k] > 1 ? ' ×' + skipped[k] : '')).join(', ') + '.');
-  return { program, warn, cfg };
+  return { program: prepareProgram(program), warn, cfg };
 }
 
 // ---------- export ----------
 
-// Program tree -> Scratch 3 project.json. Gray (unsupported) blocks are dropped.
+// Program tree -> Scratch 3 project.json. Validate before generating any output.
 export function buildProject(prog) {
+  prog = prepareProgram(prog);
   const blocks = {}; let n = 0, dropped = 0;
   const nid = () => 'sim' + (++n) + Math.random().toString(36).slice(2, 7);
   const mk = (opcode, parent, extra) => { const id = nid(); blocks[id] = Object.assign({ opcode, next: null, parent, inputs: {}, fields: {}, shadow: false, topLevel: false }, extra || {}); return id; };
@@ -297,14 +298,14 @@ export function buildProject(prog) {
       x = { ...x, t: x.t === 'move' ? 'steer' : 'startSteer', steer: lit(x.dir === 'clockwise' ? 100 : -100) };
     }
     if (x.t === 'call') {
-      const p = prog.procs && prog.procs[x.name]; if (!p) { dropped++; return null; }
+      const p = prog.procs && prog.procs[x.name]; if (!p) throw new CompatibilityError([`My Block ${x.name}: missing definition`]);
       const ids = procArgIds[x.name];
       const id = mk('procedures_call', parent, { mutation: { tagName: 'mutation', children: [], proccode: procCode(x.name, p), argumentids: JSON.stringify(ids), warp: 'false' } });
       p.params.forEach((q, i) => { const inp = valueInput(id, q.kind === 'b' ? { kind: 'bool' } : { kind: 'text', numType: 10, def: '' }, x.args && x.args[q.name]); if (inp) blocks[id].inputs[ids[i]] = inp; });
       return id;
     }
     const spec = SPEC[x.t];
-    if (!spec || !spec.scratch || spec.shape) { dropped++; return null; }
+    if (!spec?.scratch?.length || spec.shape) throw new CompatibilityError([`${x.t}: unsupported command`]);
     const id = mk(spec.scratch[0], parent); fill(id, x); return id;
   };
   // Link a statement list under `parent`; returns the first block's id.
@@ -312,7 +313,7 @@ export function buildProject(prog) {
     let first = null, prev = null;
     for (const x of list) {
       const id = stmtBlock(x, prev || parent);
-      if (!id) continue;
+      if (!id) throw new Error('Cannot export an empty command');
       if (prev) blocks[prev].next = id; else first = id;
       prev = id;
     }
@@ -351,7 +352,7 @@ export function buildProject(prog) {
       { isStage: false, name: 'BioGlowSim', variables, lists, broadcasts: {}, blocks, comments: {}, currentCostume: 0, costumes: [costume('costume1', 240, 180)], sounds: [], volume: 100, layerOrder: 1, visible: true, x: 0, y: 0, size: 100, direction: 90, draggable: false, rotationStyle: 'all around' }
     ],
     monitors: [],
-    extensions: ['flipperevents', 'flippermove', 'flippermotor', 'flippersensors', 'flipperlight', 'flippersound'],
+    extensions: ['flipperevents', 'flippermove', 'flippermotor', 'flippersensors', 'flippercontrol', 'flippermoremotor', 'flippermoremove', 'flipperlight', 'flippersound'],
     meta: { semver: '3.0.0', vm: '0.2.0', agent: 'BioGlow Simulator' }
   };
   return { project, dropped };

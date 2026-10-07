@@ -1,3 +1,5 @@
+import { prepareProgram } from './compatibility.js';
+import { installProgram } from './program-transaction.js';
 import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, DOCKS, DEFAULT_DOCKS, AUTO_KEYS, MECHANISMS, APPROACH, DEFAULT_APPROACH } from './field.js';
 import { PORTS, PAIRS, DEMO, flatToAst, emptyProgram } from './blocks.js';
 import { programToJson, jsonToProgram } from './blocks-json.js';
@@ -29,6 +31,17 @@ function load() {
   return {};
 }
 const saved = migrateArmHome(load());
+let recoveryError = null;
+try {
+  const workspaceProgram = saved.ws ? jsonToProgram(saved.ws).program : null;
+  if (saved.program) {
+    const canonical = prepareProgram({ ...saved.program, sounds: saved.sounds || saved.program.sounds || {} });
+    // Rebuild only a migrated program; ordinary reloads preserve the user's layout.
+    if (JSON.stringify(canonical) !== JSON.stringify(saved.program)) saved.ws = null;
+    saved.program = canonical;
+  }
+  if (saved.ws && workspaceProgram) saved.program = prepareProgram({ ...workspaceProgram, sounds: saved.sounds || {} });
+} catch (err) { recoveryError = err; }
 const state = {
   tab: 'code',
   program: saved.program && saved.program.stacks ? saved.program : demoProgram(),
@@ -44,6 +57,7 @@ const state = {
   mat: saved.mat === 'plain' ? 'plain' : 'photo'
 };
 function save() {
+  if (recoveryError) return; // Keep an unsupported saved project intact until explicitly replaced.
   try {
     localStorage.setItem(STORE, JSON.stringify({
       robotHomeVersion: 2, program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
@@ -406,11 +420,16 @@ let ws = null, toolbox = null, lastLit = new Set(), loadingWs = false;
 
 // Show a program in the block editor (after an import, the demo, or Clear).
 function showProgram(program) {
-  if (!ws) { state.program = program; save(); return; }
-  registerNames(program);
   loadingWs = true;
-  try { window.Blockly.serialization.workspaces.load(programToJson(program), ws); } finally { loadingWs = false; }
-  syncProgram();
+  try {
+    const candidate = installProgram(program, ws ? {
+      read: () => window.Blockly.serialization.workspaces.save(ws),
+      write: json => { registerNames(program); window.Blockly.serialization.workspaces.load(json, ws); }
+    } : null);
+    recoveryError = null;
+    state.program = candidate; state.sounds = candidate.sounds || {};
+    if (ws) syncProgram(); else save();
+  } finally { loadingWs = false; }
 }
 
 // Statements in the program (stacks and My Blocks), for the status line.
@@ -421,6 +440,7 @@ function countBlocks(prog) {
 
 // Read the program back out of the editor whenever the kids change it.
 function syncProgram() {
+  if (recoveryError) throw recoveryError;
   const json = window.Blockly.serialization.workspaces.save(ws);
   const res = jsonToProgram(json);
   res.program.sounds = state.sounds; // sound lengths from the last imported file
@@ -437,7 +457,7 @@ function initCode() {
       <div class="row"><button type="button" class="ghost" data-act="demo">Demo</button><button type="button" class="ghost" data-act="clear">Clear</button></div>
     </div>
     <div class="blockly-wrap"><div id="blockly"></div><button type="button" class="blocks-toggle" id="blocks-toggle" aria-expanded="false">+ Blocks</button></div>
-    <div class="fine">Drag blocks out of the menu and snap them under “when program starts”. Drag a block back to the menu to delete it.</div>`;
+    <div class="fine">Supported SPIKE Prime 3.6.1 Word Blocks subset. Unsupported blocks, options and sound assets are blocked. Steering degrees mean motor rotation. Drag blocks under “when program starts”. Drag a block back to the menu to delete it.</div>`;
   try { ws = createWorkspace($('blockly')); }
   catch (err) { $('blockly').innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
   let loaded = false;
@@ -446,8 +466,9 @@ function initCode() {
     catch { /* saved layout from an older version: rebuild from the program */ }
     finally { loadingWs = false; }
   }
-  if (loaded) syncProgram(); else showProgram(state.program);
-  ws.addChangeListener((e) => { if (!e.isUiEvent && !loadingWs) syncProgram(); });
+  if (recoveryError) showMsg('Saved project blocked and kept intact. Load a supported project or choose Clear/Demo to replace it.\n' + recoveryError.message);
+  else if (loaded) syncProgram(); else showProgram(state.program);
+  ws.addChangeListener((e) => { if (!e.isUiEvent && !loadingWs) { try { syncProgram(); } catch (err) { showMsg(err.message); } } });
   // The editor fills whatever space its box gets (window size, phone layout, screen turned).
   new ResizeObserver(() => window.Blockly.svgResize(ws)).observe($('blockly'));
   toolbox = foldingToolbox(ws, (shown) => {
@@ -827,8 +848,8 @@ document.addEventListener('pointerup', endSwipe);
 document.addEventListener('pointercancel', endSwipe);
 
 // Read the blocks right before running/exporting, so the newest edits always count.
-const latestProgram = () => { if (ws) syncProgram(); return state.program; };
-$('run').onclick = () => { const a = audioCtx(); if (a && a.state === 'suspended') a.resume(); sim.run(latestProgram()); drawField(); };
+const latestProgram = () => { if (recoveryError) throw recoveryError; if (ws) syncProgram(); return prepareProgram(state.program); };
+$('run').onclick = () => { try { const p = latestProgram(); sim.run(p); const a = audioCtx(); if (a && a.state === 'suspended') a.resume(); drawField(); } catch (err) { showMsg('Cannot run: ' + err.message); } };
 $('stop').onclick = () => { if (sim.stop()) { state.tokens = Math.max(0, state.tokens - 1); save(); renderScore(); } drawField(); };
 $('reset').onclick = () => { sim.reset(); sim.log('Robot back at the start position.'); drawField(); };
 $('match').onclick = () => {
@@ -906,9 +927,9 @@ $('file').addEventListener('change', async (e) => {
 async function openProject(buf, name) {
   try {
     const res = await importProject(buf);
-    Object.assign(state.cfg, res.cfg);
-    state.sounds = res.program.sounds || {};
     showProgram(res.program);
+    Object.assign(state.cfg, res.cfg);
+    save();
     const setup = [];
     if (res.cfg.pair) setup.push('drive motors ' + res.cfg.pair.split('').join(' + '));
     if (res.cfg.colorPort) setup.push('color sensor on ' + res.cfg.colorPort);
@@ -1000,11 +1021,13 @@ $('gh-filter').oninput = () => ghRenderList();
 
 let lastUrl = null;
 $('export').onclick = () => {
-  const { zip, dropped } = exportLlsp3(latestProgram(), 'BioGlow sim export');
+  let zip;
+  try { ({ zip } = exportLlsp3(latestProgram(), 'BioGlow sim export')); }
+  catch (err) { showMsg('Cannot export: ' + err.message); return; }
   if (lastUrl) URL.revokeObjectURL(lastUrl);
   lastUrl = URL.createObjectURL(new Blob([zip], { type: 'application/octet-stream' }));
   const a = document.createElement('a'); a.href = lastUrl; a.download = 'bioglow-sim.llsp3'; a.className = 'btn save'; a.textContent = 'Save bioglow-sim.llsp3';
-  showMsg('Export ready. Opening it in the SPIKE app is still untested; it re-imports here.' + (dropped ? ` ${dropped} gray (unsupported) block${dropped > 1 ? 's were' : ' was'} left out.` : '') + '\n', a);
+  showMsg('Export ready for the supported SPIKE Prime Word Blocks subset. Physical-hub behavior still requires testing.\n', a);
   a.click();
 };
 
@@ -1016,11 +1039,9 @@ const SHARE_NAME = 'bioglow-sim.llsp3';
 const isCancel = (err) => err && err.name === 'AbortError';
 
 $('share').onclick = async () => {
-  const program = latestProgram();
-  let url;
-  try { url = await shareUrl(location.href, { program, cfg: state.cfg, start: state.start, approach: state.approach }); }
+  let program, zip, url;
+  try { program = latestProgram(); ({ zip } = exportLlsp3(program, 'BioGlow sim export')); url = await shareUrl(location.href, { program, cfg: state.cfg, start: state.start, approach: state.approach }); }
   catch (err) { showMsg('Could not make a share link: ' + err.message); return; }
-  const { zip } = exportLlsp3(program, 'BioGlow sim export');
   const file = new File([zip], SHARE_NAME, { type: 'application/octet-stream' });
   // Work this out now: the share sheet has to open straight from the tap.
   const canFile = !!(navigator.canShare && navigator.canShare({ files: [file] }));
@@ -1090,11 +1111,10 @@ async function openShared() {
   history.replaceState(null, '', location.pathname + location.search); // a reload shouldn't reopen it
   let data;
   try { data = await decodeShare(code); } catch (err) { showMsg(err.message); return; }
-  if (countBlocks(latestProgram()) > 0 && !confirm('Open the shared program? It replaces the program, robot setup and start position here.')) return;
+  if ((recoveryError || countBlocks(latestProgram()) > 0) && !confirm('Open the shared program? It replaces the program, robot setup and start position here.')) return;
+  try { showProgram(data.program); } catch (err) { showMsg('Cannot open shared project: ' + err.message); return; }
   sim.stop();
   if (data.cfg) Object.assign(state.cfg, normalizeConfig(data.cfg));
-  state.sounds = data.program.sounds || {};
-  showProgram(data.program);
   if (data.start) setStart(data.start);
   // Sides set by the sender replace ours; a link with none leaves this device's settings alone.
   if (data.approach && Object.keys(data.approach).length) { for (const k of Object.keys(state.approach)) delete state.approach[k]; Object.assign(state.approach, data.approach); save(); }
@@ -1125,5 +1145,6 @@ buildField(); renderStart(); renderDocks(); initCode(); renderScore(); renderRob
 openShared();
 requestAnimationFrame(frame);
 // Save the latest blocks when the page is hidden or closed.
-document.addEventListener('visibilitychange', () => { if (document.hidden && ws) syncProgram(); });
-window.addEventListener('pagehide', () => { if (ws) syncProgram(); });
+const saveEditorBeforeLeaving = () => { if (ws) { try { syncProgram(); } catch (err) { showMsg(err.message); } } };
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveEditorBeforeLeaving(); });
+window.addEventListener('pagehide', saveEditorBeforeLeaving);

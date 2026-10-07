@@ -50,7 +50,7 @@ function argFor(key, d) {
   if (d.kind === 'sound') return { type: 'field_sound', name: key };
   if (d.kind === 'matrix') return { type: 'field_matrix', name: key, value: IMAGES.heart };
   if (d.kind === 'menu' || d.kind === 'field') {
-    if (d.ports) return { type: 'field_dropdown', name: key, options: () => PORTS.concat([...extraPorts]).map(p => [p, p]) };
+    if (d.ports) return { type: 'field_dropdown', name: key, options: () => (d.multiple ? Array.from({ length: 63 }, (_, mask) => PORTS.filter((_, i) => (mask + 1) & (1 << i)).join('')) : PORTS).map(p => [p, p]) };
     if (d.opts === COLORS) return { type: 'field_dropdown', name: key, options: COLORS.map(colorOption) };
     return { type: 'field_dropdown', name: key, options: d.opts.map(o => [o, o]) };
   }
@@ -185,7 +185,7 @@ const flyoutBlock = (t) => {
 function toolbox() {
   const contents = CATEGORIES.map(([name, cat]) => ({
     kind: 'category', name, colour: COLOR[cat],
-    contents: Object.keys(SPEC).filter(t => SPEC[t].cat === cat).map(flyoutBlock)
+    contents: Object.keys(SPEC).filter(t => SPEC[t].cat === cat && !SPEC[t].unsupported).map(flyoutBlock)
   }));
   contents.push({ kind: 'category', name: 'Variables', colour: COLOR.var, custom: 'SIM_VARIABLES' });
   contents.push({ kind: 'category', name: 'My Blocks', colour: COLOR.my, custom: 'SIM_MYBLOCKS' });

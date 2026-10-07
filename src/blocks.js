@@ -12,20 +12,20 @@
 
 export const PORTS = ['A', 'B', 'C', 'D', 'E', 'F'];
 export const DIRS4 = ['forward', 'back', 'clockwise', 'counterclockwise'];
-export const UNITS = ['cm', 'in', 'rotations', 'degrees', 'seconds'];
-export const COLORS = ['black', 'violet', 'blue', 'azure', 'green', 'yellow', 'red', 'white', 'none'];
+export const UNITS = ['rotations', 'degrees', 'seconds', 'cm', 'in'];
+export const COLORS = ['black', 'violet', 'blue', 'green', 'yellow', 'red', 'white', 'none'];
 export const PAIRS = [];
 for (const a of 'ABCDEF') for (const b of 'ABCDEF') if (a !== b) PAIRS.push(a + b);
 
 // SPIKE color ids (also what the "color" reporter returns).
 export const COLOR_CODE = { black: 0, violet: 1, magenta: 1, blue: 3, azure: 4, green: 6, yellow: 7, red: 9, white: 10, none: -1 };
-export const CODE_COLOR = { '0': 'black', '1': 'violet', '3': 'blue', '4': 'azure', '5': 'green', '6': 'green', '7': 'yellow', '9': 'red', '10': 'white', '-1': 'none' };
-const colorMap = { to: (v) => String(COLOR_CODE[v] ?? 0), from: (v) => CODE_COLOR[String(v)] || 'black' };
+export const CODE_COLOR = { '0': 'black', '1': 'violet', '3': 'blue', '4': 'azure', '6': 'green', '7': 'yellow', '9': 'red', '10': 'white', '-1': 'none' };
+const colorMap = { to: (v) => String(COLOR_CODE[v] ?? 0), from: (v) => CODE_COLOR[String(v)] ?? String(v) };
 
 // Param kinds: 'menu' (dropdown; a shadow block in SPIKE files), 'field' (dropdown; a field),
 // 'num' / 'text' (slots that also take reporters), 'bool' (hexagon slot).
 const menu = (opts, key, shadow, map) => ({ kind: 'menu', opts, key, shadow, map });
-const port = (shadow = 'flippermotor_multiple-port-selector', key = 'PORT') => ({ kind: 'menu', opts: PORTS, key, shadow, ports: true });
+const port = (shadow = 'flippermotor_multiple-port-selector', key = 'PORT') => ({ kind: 'menu', opts: PORTS, key, shadow, ports: true, multiple: shadow.endsWith('multiple-port-selector') });
 const field = (opts, key, map) => ({ kind: 'field', opts, key, map });
 const num = (def, key, o = {}) => ({ kind: 'num', def, key, numType: o.numType || 4, shadow: o.shadow, map: o.map });
 const text = (def, key) => ({ kind: 'text', def, key, numType: 10 });
@@ -45,7 +45,7 @@ export const IMAGES = {
 export const SOUNDS = ['Beep', 'Chirp', 'Hello', 'Celebrate', 'Bonk'];
 
 const MOTOR_DIR = menu(['clockwise', 'counterclockwise'], 'DIRECTION', 'flippermotor_custom-icon-direction');
-const MOVE_DIR = menu(DIRS4, 'DIRECTION', 'flippermove_custom-icon-direction');
+const MOVE_DIR = menu(['forward', 'back'], 'DIRECTION', 'flippermove_custom-icon-direction');
 const MOVE_UNIT = field(UNITS, 'UNIT', { to: v => v === 'in' ? 'inches' : v, from: v => v === 'inches' ? 'in' : v });
 // SPIKE's rotation-wheel shadow stores labels such as "right: 100".
 // Its compiler reads the trailing signed number; keep a number inside the simulator.
@@ -57,6 +57,8 @@ const STEERING = { shadow: 'flippermove_rotation-wheel', map: {
   from: steeringNumber,
   to: v => { const n = steeringNumber(v); return `${n > 0 ? 'right' : n < 0 ? 'left' : 'straight'}: ${n}`; }
 } };
+const DIST_UNIT = field(['%', 'cm', 'inches'], 'UNIT');
+const TURN_UNIT = field(['rotations', 'degrees', 'seconds'], 'UNIT');
 const CMP = field(['<', '>', '='], 'COMPARATOR');
 const COLOR_PORT = port('flippersensors_color-sensor-selector');
 
@@ -65,7 +67,7 @@ export const SPEC = {
   start: { cat: 'events', shape: 'hat', text: 'when program starts', scratch: ['flipperevents_whenProgramStarts'] },
   whenColor: { cat: 'events', shape: 'hat', text: 'when %port is color %color', scratch: ['flipperevents_whenColor'], p: { port: port('flipperevents_color-sensor-selector'), color: menu(COLORS, 'OPTION', 'flipperevents_color-selector', colorMap) } },
   whenPressed: { cat: 'events', shape: 'hat', text: 'when %port is %opt', scratch: ['flipperevents_whenPressed'], p: { port: port('flipperevents_force-sensor-selector'), opt: field(['pressed', 'released'], 'OPTION') } },
-  whenDistance: { cat: 'events', shape: 'hat', text: 'when %port is %cmp %val cm', scratch: ['flipperevents_whenDistance'], p: { port: port('flipperevents_distance-sensor-selector'), cmp: CMP, val: num(15, 'VALUE') }, fixed: { UNIT: 'cm' } },
+  whenDistance: { cat: 'events', shape: 'hat', text: 'when %port is %cmp %val %unit', scratch: ['flipperevents_whenDistance'], p: { port: port('flipperevents_distance-sensor-selector'), cmp: CMP, val: num(8, 'VALUE'), unit: DIST_UNIT } },
   whenButton: { cat: 'events', shape: 'hat', text: 'when %button button %event', scratch: ['flipperevents_whenButton'], p: { button: field(['left', 'right'], 'BUTTON'), event: field(['pressed', 'released'], 'EVENT') } },
   whenTimer: { cat: 'events', shape: 'hat', text: 'when timer > %val', scratch: ['flipperevents_whenTimer'], p: { val: num(5, 'VALUE') } },
   whenCondition: { cat: 'events', shape: 'hat', text: 'when %cond', scratch: ['flipperevents_whenCondition'], p: { cond: bool('CONDITION') } },
@@ -78,30 +80,30 @@ export const SPEC = {
   motorStart: { cat: 'motor', text: '%port start motor %dir', scratch: ['flippermotor_motorStartDirection'], p: { port: port(), dir: MOTOR_DIR } },
   motorStop: { cat: 'motor', text: '%port stop motor', scratch: ['flippermotor_motorStop'], p: { port: port() } },
   motorSpeed: { cat: 'motor', text: '%port set speed to %pct %', scratch: ['flippermotor_motorSetSpeed'], p: { port: port(), pct: num(75, 'SPEED') } },
-  motorSetRel: { cat: 'motor', text: '%port set relative position to %val', scratch: ['flippermotor_motorSetDegreeCounted'], p: { port: port(), val: num(0, 'VALUE') } },
+  motorSetRel: { cat: 'motor', text: '%port set relative position to %val', scratch: ['flippermoremotor_motorSetDegreeCounted', 'flippermotor_motorSetDegreeCounted'], p: { port: port('flippermoremotor_multiple-port-selector'), val: num(0, 'VALUE') } },
   motorPos: { cat: 'motor', shape: 'n', text: '%port position', scratch: ['flippermotor_absolutePosition'], p: { port: port('flippermotor_single-motor-selector') } },
-  motorRel: { cat: 'motor', shape: 'n', text: '%port relative position', scratch: ['flippermotor_relativePosition', 'flippermotor_motorRelativePosition'], p: { port: port('flippermotor_single-motor-selector') } },
+  motorRel: { cat: 'motor', shape: 'n', text: '%port relative position', scratch: ['flippermoremotor_position', 'flippermotor_relativePosition', 'flippermotor_motorRelativePosition'], p: { port: port('flippermoremotor_single-motor-selector') } },
 
   move: { cat: 'move', text: 'move %dir for %val %unit', scratch: ['flippermove_move'], p: { dir: MOVE_DIR, val: num(10, 'VALUE'), unit: MOVE_UNIT } },
-  steer: { cat: 'move', text: 'move %steer steering for %val %unit', scratch: ['flippermove_steer'], p: { steer: num(30, 'STEERING', STEERING), val: num(10, 'VALUE'), unit: MOVE_UNIT } },
+  steer: { cat: 'move', text: 'move %steer steering for %val %unit', scratch: ['flippermove_steer'], p: { steer: num(30, 'STEERING', STEERING), val: num(10, 'VALUE'), unit: TURN_UNIT } },
   startMove: { cat: 'move', text: 'start moving %dir', scratch: ['flippermove_startMove'], p: { dir: MOVE_DIR } },
   startSteer: { cat: 'move', text: 'start moving %steer steering', scratch: ['flippermove_startSteer'], p: { steer: num(30, 'STEERING', STEERING) } },
-  tank: { cat: 'move', text: 'move left %left % right %right % for %val %unit', scratch: ['flippermove_moveDualSpeed'], p: { left: num(50, 'LEFT'), right: num(50, 'RIGHT'), val: num(10, 'VALUE'), unit: MOVE_UNIT } },
-  startTank: { cat: 'move', text: 'start moving left %left % right %right %', scratch: ['flippermove_startDualSpeed'], p: { left: num(50, 'LEFT'), right: num(50, 'RIGHT') } },
+  tank: { unsupported: 'Timed tank movement is a simulator-only legacy block. Replace it with stock steering or start tank plus wait and stop.', cat: 'move', text: 'move left %left % right %right % for %val %unit', scratch: ['flippermove_moveDualSpeed'], p: { left: num(50, 'LEFT'), right: num(50, 'RIGHT'), val: num(10, 'VALUE'), unit: MOVE_UNIT } },
+  startTank: { cat: 'move', text: 'start moving left %left % right %right %', scratch: ['flippermoremove_startDualSpeed', 'flippermove_startDualSpeed'], p: { left: num(50, 'LEFT'), right: num(50, 'RIGHT') } },
   stopMove: { cat: 'move', text: 'stop moving', scratch: ['flippermove_stopMove'] },
   speed: { cat: 'move', text: 'set movement speed to %pct %', scratch: ['flippermove_movementSpeed', 'flippermove_setMovementSpeed'], p: { pct: num(50, 'SPEED') } },
   pair: { cat: 'move', text: 'set movement motors to %pair', scratch: ['flippermove_setMovementPair'], p: { pair: menu(PAIRS, 'PAIR', 'flippermove_movement-port-selector') } },
-  setDistance: { cat: 'move', text: 'set 1 motor rotation to %cm cm moved', scratch: ['flippermove_setDistance'], p: { cm: num(17.6, 'DISTANCE') }, fixed: { UNIT: 'cm' } },
+  setDistance: { cat: 'move', text: 'set 1 motor rotation to %cm %unit moved', scratch: ['flippermove_setDistance'], p: { cm: num(17.5, 'DISTANCE'), unit: field(['cm', 'inches'], 'UNIT') } },
 
   showImage: { cat: 'light', text: 'turn on %image', scratch: ['flipperlight_lightDisplayImageOn'], p: { image: matrix() } },
   showImageFor: { cat: 'light', text: 'turn on %image for %val seconds', scratch: ['flipperlight_lightDisplayImageOnForTime'], p: { image: matrix(), val: num(2, 'VALUE') } },
   show: { cat: 'light', text: 'write %text', scratch: ['flipperlight_lightDisplayText'], p: { text: text('Hello', 'TEXT') } },
   displayOff: { cat: 'light', text: 'turn off pixels', scratch: ['flipperlight_lightDisplayOff'] },
   setBrightness: { cat: 'light', text: 'set pixel brightness to %b %', scratch: ['flipperlight_lightDisplaySetBrightness'], p: { b: num(75, 'BRIGHTNESS') } },
-  setPixel: { cat: 'light', text: 'set pixel %x , %y to %b %', scratch: ['flipperlight_lightDisplaySetPixel'], p: { x: num(1, 'X'), y: num(1, 'Y'), b: num(100, 'BRIGHTNESS') } },
+  setPixel: { cat: 'light', text: 'set pixel %x , %y to %b %', scratch: ['flipperlight_lightDisplaySetPixel'], p: { x: num(1, 'X', { shadow: 'flipperlight_matrix-pixel-index' }), y: num(1, 'Y', { shadow: 'flipperlight_matrix-pixel-index' }), b: num(100, 'BRIGHTNESS') } },
   centerLight: { cat: 'light', text: 'set Center Button light to %color', scratch: ['flipperlight_centerButtonLight'], p: { color: menu(COLORS, 'COLOR', 'flipperlight_color-selector-vertical', colorMap) } },
-  playSoundWait: { cat: 'sound', text: 'play sound %sound until done', scratch: ['flippersound_playSoundUntilDone'], p: { sound: sound() } },
-  playSound: { cat: 'sound', text: 'start sound %sound', scratch: ['flippersound_playSound'], p: { sound: sound() } },
+  playSoundWait: { unsupported: 'Named sound assets are not preserved. Replace this block with a beep or edit the project in SPIKE.', cat: 'sound', text: 'play sound %sound until done', scratch: ['flippersound_playSoundUntilDone'], p: { sound: sound() } },
+  playSound: { unsupported: 'Named sound assets are not preserved. Replace this block with a beep or edit the project in SPIKE.', cat: 'sound', text: 'start sound %sound', scratch: ['flippersound_playSound'], p: { sound: sound() } },
   beep: { cat: 'sound', text: 'beep %note for %val seconds', scratch: ['flippersound_beepForTime'], p: { note: num(60, 'NOTE', { shadow: 'flippersound_custom-piano' }), val: num(0.2, 'DURATION') } },
   beepStart: { cat: 'sound', text: 'start playing beep %note', scratch: ['flippersound_beep'], p: { note: num(60, 'NOTE', { shadow: 'flippersound_custom-piano' }) } },
   stopSound: { cat: 'sound', text: 'stop all sounds', scratch: ['flippersound_stopSound'] },
@@ -116,19 +118,20 @@ export const SPEC = {
   ifElse: { cat: 'control', text: 'if %cond then', scratch: ['control_if_else'], p: { cond: bool('CONDITION') }, body: 'SUBSTACK', else: 'SUBSTACK2' },
   waitUntil: { cat: 'control', text: 'wait until %cond', scratch: ['control_wait_until'], p: { cond: bool('CONDITION') } },
   repeatUntil: { cat: 'control', text: 'repeat until %cond', scratch: ['control_repeat_until'], p: { cond: bool('CONDITION') }, body: 'SUBSTACK' },
-  stop: { cat: 'control', text: 'stop %opt', scratch: ['control_stop'], p: { opt: field(['all', 'this stack'], 'STOP_OPTION', { to: (v) => v === 'all' ? 'all' : 'this script', from: (v) => v === 'all' ? 'all' : 'this stack' }) }, end: true },
+  stop: { cat: 'control', text: 'stop %opt', scratch: ['flippercontrol_stop', 'control_stop'], p: { opt: field(['all', 'this stack', 'program'], 'STOP_OPTION') }, end: true },
+  stopOthers: { cat: 'control', text: 'stop other stacks', scratch: ['flippercontrol_stopOtherStacks'] },
 
   isColor: { cat: 'sensor', shape: 'b', text: '%port is color %color ?', scratch: ['flippersensors_isColor'], p: { port: COLOR_PORT, color: menu(COLORS, 'VALUE', 'flippersensors_color-selector', colorMap) } },
   isReflection: { cat: 'sensor', shape: 'b', text: '%port reflection %cmp %val % ?', scratch: ['flippersensors_isReflectivity'], p: { port: COLOR_PORT, cmp: CMP, val: num(50, 'VALUE') } },
-  isDistance: { cat: 'sensor', shape: 'b', text: '%port is %cmp %val cm ?', scratch: ['flippersensors_isDistance'], p: { port: port('flippersensors_distance-sensor-selector'), cmp: CMP, val: num(15, 'VALUE') }, fixed: { UNIT: 'cm' } },
-  isPressed: { cat: 'sensor', shape: 'b', text: '%port is pressed ?', scratch: ['flippersensors_isPressed'], p: { port: port('flippersensors_force-sensor-selector') }, fixed: { OPTION: 'pressed' } },
+  isDistance: { cat: 'sensor', shape: 'b', text: '%port is %cmp %val %unit ?', scratch: ['flippersensors_isDistance'], p: { port: port('flippersensors_distance-sensor-selector'), cmp: CMP, val: num(15, 'VALUE'), unit: DIST_UNIT } },
+  isPressed: { cat: 'sensor', shape: 'b', text: '%port is %opt ?', scratch: ['flippersensors_isPressed'], p: { port: port('flippersensors_force-sensor-selector'), opt: field(['pressed', 'released'], 'OPTION') } },
   color: { cat: 'sensor', shape: 'n', text: '%port color', scratch: ['flippersensors_color'], p: { port: COLOR_PORT } },
   reflection: { cat: 'sensor', shape: 'n', text: '%port reflected light', scratch: ['flippersensors_reflectivity'], p: { port: COLOR_PORT } },
-  distance: { cat: 'sensor', shape: 'n', text: '%port distance in cm', scratch: ['flippersensors_distance'], p: { port: port('flippersensors_distance-sensor-selector') }, fixed: { UNIT: 'cm' } },
-  angle: { cat: 'sensor', shape: 'n', text: '%axis angle', scratch: ['flippersensors_orientationAxis'], p: { axis: field(['yaw', 'pitch', 'roll'], 'AXIS') } },
+  distance: { cat: 'sensor', shape: 'n', text: '%port distance in %unit', scratch: ['flippersensors_distance'], p: { port: port('flippersensors_distance-sensor-selector'), unit: DIST_UNIT } },
+  angle: { cat: 'sensor', shape: 'n', text: '%axis angle', scratch: ['flippersensors_orientationAxis'], p: { axis: field(['yaw'], 'AXIS') } },
   resetYaw: { cat: 'sensor', text: 'set yaw angle to 0°', scratch: ['flippersensors_resetYaw', 'flippersensors_resetYawAxis', 'flippersensors_setYaw'] },
   timer: { cat: 'sensor', shape: 'n', text: 'timer', scratch: ['flippersensors_timer'] },
-  buttonPressed: { cat: 'sensor', shape: 'b', text: '%button button pressed ?', scratch: ['flippersensors_buttonIsPressed'], p: { button: field(['left', 'right'], 'BUTTON') }, fixed: { EVENT: 'pressed' } },
+  buttonPressed: { cat: 'sensor', shape: 'b', text: '%button button %event ?', scratch: ['flippersensors_buttonIsPressed'], p: { button: field(['left', 'right'], 'BUTTON'), event: field(['pressed', 'released'], 'EVENT') } },
   resetTimer: { cat: 'sensor', text: 'reset timer', scratch: ['flippersensors_resetTimer'] },
 
   add: { cat: 'op', shape: 'n', text: '%a + %b', scratch: ['operator_add'], p: { a: num('', 'NUM1'), b: num('', 'NUM2') } },
@@ -199,7 +202,7 @@ export function flatToAst(flat) {
   let i = 0;
   const yaw = (b) => ({ t: b.cmp === '<' ? 'lt' : 'gt', a: node('angle', { axis: 'yaw' }), b: lit(b.val) });
   const cond = (b) => b.t.endsWith('Color') ? node('isColor', { port: b.port, color: b.color })
-    : b.t.endsWith('Dist') ? node('isDistance', { port: b.port, cmp: b.cmp, val: b.val }) : yaw(b);
+    : b.t.endsWith('Dist') ? node('isDistance', { port: b.port, cmp: b.cmp, val: b.val, unit: 'cm' }) : yaw(b);
   const seq = () => {
     const out = [];
     while (i < flat.length) {
