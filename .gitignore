@@ -8,3 +8,7 @@ fixtures/
 /private-models.zip
 /private-models/
 /bioglow-local-models*.zip
+# Local Firebase emulators and logs must never be published.
+.firebase/
+*debug.log
+firebase-export*/
