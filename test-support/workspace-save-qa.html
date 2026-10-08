@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>Shared save workspace QA</title>
+<style>body{font:16px system-ui;margin:24px;background:#f5f7fb}button{padding:12px}#result{white-space:pre-wrap;background:white;padding:18px;border-radius:10px}.editors{display:flex;gap:16px}.editor{width:48%;height:420px}</style>
+<h1>Shared save workspace QA</h1><p>Local synthetic tests only. No Firebase service is contacted.</p>
+<button id="run">Run workspace checks</button><pre id="result">Ready.</pre><div class="editors"><div id="a" class="editor"></div><div id="b" class="editor"></div></div>
+<script src="https://cdn.jsdelivr.net/npm/blockly@11.2.2/blockly.min.js"></script>
+<script type="module">
+import {createWorkspace} from '../src/workspace.js';
+import {prepareSavedWorkspace,installSavedWorkspace} from '../src/workspace-transaction.js';
+import {encodeSave,decodeSave} from '../src/save-format.js';
+const B=window.Blockly,a=createWorkspace(document.getElementById('a')),b=createWorkspace(document.getElementById('b'));
+const save=ws=>B.serialization.workspaces.save(ws),canonical=x=>JSON.stringify(x);
+document.getElementById('run').onclick=()=>{
+ const lines=[];let failed=0;
+ const check=(name,fn)=>{try{fn();lines.push('PASS '+name);}catch(e){failed++;lines.push('FAIL '+name+': '+e.message);}};
+ const assert=(ok,msg)=>{if(!ok)throw Error(msg||'mismatch');};
+ B.serialization.workspaces.load({variables:[{name:'count',id:'variable-count',type:''},{name:'items',id:'variable-list',type:'list'}],blocks:{languageVersion:0,blocks:[
+  {type:'sim_start',id:'start',x:40,y:40},
+  {type:'sim_text',id:'loose',x:380,y:140,fields:{V:'unfinished work'},enabled:false},
+  {type:'sim_var',id:'var-read',x:380,y:220,fields:{name:{id:'variable-count'}}},
+  {type:'sim_define',id:'definition',x:40,y:300,extraState:{name:'Turn home',params:[{name:'amount',kind:'n'}]}}
+ ]}},a);
+ a.getBlockById('loose').setCommentText('Keep this unfinished block');
+ const original=save(a),payload={version:1,workspace:original,start:{x:360,y:430,h:-36}};
+ check('encode/decode keeps workspace and pose',()=>assert(canonical(decodeSave(encodeSave(payload)))===canonical(payload)));
+ check('headless validation preserves exact serialization',()=>assert(canonical(prepareSavedWorkspace(payload,B))===canonical(original)));
+ check('second visible workspace preserves loose/disabled blocks, comments, variables and custom block',()=>{installSavedWorkspace(payload,B,b);assert(canonical(save(b))===canonical(original));});
+ check('invalid block type leaves existing workspace intact',()=>{const before=canonical(save(b)),bad=structuredClone(payload);bad.workspace.blocks.blocks[0].type='unsafe_unknown';let rejected=false;try{installSavedWorkspace(bad,B,b);}catch{rejected=true;}assert(rejected&&canonical(save(b))===before);});
+ check('invalid field value is rejected instead of silently normalized',()=>{const before=canonical(save(b)),bad=structuredClone(payload);bad.workspace.blocks.blocks[0].fields={unexpected:'would be lost'};let rejected=false;try{installSavedWorkspace(bad,B,b);}catch{rejected=true;}assert(rejected&&canonical(save(b))===before);});
+ check('invalid pose leaves existing workspace intact',()=>{const before=canonical(save(b));let rejected=false;try{installSavedWorkspace({...payload,start:{x:-1,y:0,h:0}},B,b);}catch{rejected=true;}assert(rejected&&canonical(save(b))===before);});
+ document.getElementById('result').textContent=`${lines.length-failed}/${lines.length} passed\n`+lines.join('\n');
+};
+</script>
