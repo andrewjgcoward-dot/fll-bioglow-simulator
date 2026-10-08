@@ -1,5 +1,5 @@
 {
-  "licenses": "MIT",
+  "licenses": "MIT (three, fflate); Apache-2.0 (Firebase)",
   "three": "0.180.0",
   "fflate": "0.8.2",
   "files": [
@@ -50,6 +50,19 @@
       "url": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/utils/BufferGeometryUtils.js",
       "bytes": 35539,
       "sha256": "fda7e946b8e0b5ab39b779206589e7a1079a22eb24efb89d7223e03fdfb1f751"
+    },
+    {
+      "path": "firebase-auth.js",
+      "source": "firebase@12.5.0, built by tools/build-firebase.mjs",
+      "bytes": 139393,
+      "sha256": "d5bfadccbfb149c43746e6688d7ee7f6c66f70589694b223aed0776b9992af38"
+    },
+    {
+      "path": "FIREBASE-LICENSE",
+      "source": "firebase@12.5.0, built by tools/build-firebase.mjs",
+      "bytes": 14096,
+      "sha256": "065e45b5674f9bf76670496e5472611b3fbd87fbeaf99336725430a9909cb687"
     }
-  ]
+  ],
+  "firebase-auth": "Firebase JS SDK 12.5.0; local esbuild 0.28.2 bundle"
 }

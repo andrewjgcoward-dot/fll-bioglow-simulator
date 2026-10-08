@@ -1,3 +1,6 @@
+import { installSavedWorkspace } from './workspace-transaction.js';
+import { createWorkspaceSession } from './workspace-session.js';
+import { setupLibrary } from './library-ui.js';
 import { prepareProgram } from './compatibility.js';
 import { installProgram } from './program-transaction.js';
 import { FW, FH, HOME_R, LINES, MISSIONS, TOKEN_PTS, missionPoints, totalScore, DOCKS, DEFAULT_DOCKS, AUTO_KEYS, MECHANISMS, APPROACH, DEFAULT_APPROACH } from './field.js';
@@ -33,8 +36,12 @@ function load() {
 const saved = migrateArmHome(load());
 let recoveryError = null;
 try {
-  const workspaceProgram = saved.ws ? jsonToProgram(saved.ws).program : null;
-  if (saved.program) {
+  // New raw-workspace autosaves may be unfinished. Interpret them only at the
+  // executable boundary after restoring the editor; never rebuild them from AST.
+  if (saved.ws && saved.workspaceFormat === 1) saved.program = emptyProgram();
+  const rawWorkspace = saved.ws && saved.workspaceFormat === 1;
+  const workspaceProgram = saved.ws && !rawWorkspace ? jsonToProgram(saved.ws).program : null;
+  if (saved.program && !rawWorkspace) {
     const canonical = prepareProgram({ ...saved.program, sounds: saved.sounds || saved.program.sounds || {} });
     // Rebuild only a migrated program; ordinary reloads preserve the user's layout.
     if (JSON.stringify(canonical) !== JSON.stringify(saved.program)) saved.ws = null;
@@ -60,7 +67,7 @@ function save() {
   if (recoveryError) return; // Keep an unsupported saved project intact until explicitly replaced.
   try {
     localStorage.setItem(STORE, JSON.stringify({
-      robotHomeVersion: 2, program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
+      workspaceFormat: 1, robotHomeVersion: 2, program: state.program, ws: state.ws, sounds: state.sounds, soundOn: state.soundOn, cfg: state.cfg, start: state.start, pieces: state.pieces,
       score: state.score, tokens: state.tokens, inspection: state.inspection, grid: state.grid, autoScore: state.autoScore, docks: state.docks, hints: state.hints, approach: state.approach, showSides: state.showSides, mat: state.mat
     }));
   } catch { /* storage unavailable: keep working without it */ }
@@ -416,6 +423,7 @@ $('side').addEventListener('click', (e) => {
 
 // ---------- code tab (drag-and-drop blocks) ----------
 
+let libraryUI = null;
 let ws = null, toolbox = null, lastLit = new Set(), loadingWs = false;
 
 // Show a program in the block editor (after an import, the demo, or Clear).
@@ -426,6 +434,7 @@ function showProgram(program) {
       read: () => window.Blockly.serialization.workspaces.save(ws),
       write: json => { registerNames(program); window.Blockly.serialization.workspaces.load(json, ws); }
     } : null);
+    libraryUI?.clearSelection();
     recoveryError = null;
     state.program = candidate; state.sounds = candidate.sounds || {};
     if (ws) syncProgram(); else save();
@@ -439,16 +448,7 @@ function countBlocks(prog) {
 }
 
 // Read the program back out of the editor whenever the kids change it.
-function syncProgram() {
-  if (recoveryError) throw recoveryError;
-  const json = window.Blockly.serialization.workspaces.save(ws);
-  const res = jsonToProgram(json);
-  res.program.sounds = state.sounds; // sound lengths from the last imported file
-  state.program = res.program; state.ws = json;
-  const n = countBlocks(res.program);
-  $('code-status').textContent = `${n} block${n === 1 ? '' : 's'}` + (res.warn.length ? ' · ' + res.warn[0] : '');
-  save();
-}
+function syncProgram() { workspaceSession.sync(); }
 
 function initCode() {
   $('tab-code').innerHTML = `
@@ -462,9 +462,15 @@ function initCode() {
   catch (err) { $('blockly').innerHTML = `<div class="empty">${esc(err.message)}</div>`; return; }
   let loaded = false;
   if (state.ws) {
-    try { registerNames(state.program); loadingWs = true; window.Blockly.serialization.workspaces.load(state.ws, ws); loaded = true; }
-    catch { /* saved layout from an older version: rebuild from the program */ }
-    finally { loadingWs = false; }
+    try {
+      loadingWs = true;
+      if (saved.workspaceFormat === 1) installSavedWorkspace({version: 1, workspace: state.ws, start: state.start}, window.Blockly, ws);
+      else { registerNames(state.program); window.Blockly.serialization.workspaces.load(state.ws, ws); }
+      loaded = true;
+    } catch (err) {
+      if (saved.workspaceFormat === 1) recoveryError = err; // preserve a damaged raw autosave
+      // Legacy layouts can still rebuild from their already-validated program.
+    } finally { loadingWs = false; }
   }
   if (recoveryError) showMsg('Saved project blocked and kept intact. Load a supported project or choose Clear/Demo to replace it.\n' + recoveryError.message);
   else if (loaded) syncProgram(); else showProgram(state.program);
@@ -848,7 +854,7 @@ document.addEventListener('pointerup', endSwipe);
 document.addEventListener('pointercancel', endSwipe);
 
 // Read the blocks right before running/exporting, so the newest edits always count.
-const latestProgram = () => { if (recoveryError) throw recoveryError; if (ws) syncProgram(); return prepareProgram(state.program); };
+const latestProgram = () => workspaceSession.executable();
 $('run').onclick = () => { try { const p = latestProgram(); sim.run(p); const a = audioCtx(); if (a && a.state === 'suspended') a.resume(); drawField(); } catch (err) { showMsg('Cannot run: ' + err.message); } };
 $('stop').onclick = () => { if (sim.stop()) { state.tokens = Math.max(0, state.tokens - 1); save(); renderScore(); } drawField(); };
 $('reset').onclick = () => { sim.reset(); sim.log('Robot back at the start position.'); drawField(); };
@@ -909,6 +915,29 @@ $('reset-pieces').onclick = () => {
   if (!sim.running) sim.resetObjects();
   save(); drawField();
 };
+
+// ---------- shared named saves ----------
+const workspaceSession = createWorkspaceSession({
+  state, getWorkspace: () => ws, getBlockly: () => window.Blockly,
+  guard() { if (recoveryError) throw recoveryError; },
+  persist: save,
+  status() {
+    const n = ws.getAllBlocks(false).filter(block => !block.isShadow()).length;
+    $('code-status').textContent = `${n} editor block${n === 1 ? '' : 's'}`;
+  },
+  beforeRestore() { sim.stop(); recoveryError = null; },
+  afterRestore() { sim.start = state.start; sim.reset(); renderStart(); drawField(); }
+});
+libraryUI = setupLibrary({
+  validateCandidate: workspaceSession.validateCandidate,
+  capture: workspaceSession.capture,
+  restore(data) {
+    loadingWs = true;
+    try { workspaceSession.restore(data); }
+    finally { loadingWs = false; }
+  },
+  message: (...args) => showMsg(...args)
+});
 
 // ---------- import / export ----------
 
@@ -1111,7 +1140,7 @@ async function openShared() {
   history.replaceState(null, '', location.pathname + location.search); // a reload shouldn't reopen it
   let data;
   try { data = await decodeShare(code); } catch (err) { showMsg(err.message); return; }
-  if ((recoveryError || countBlocks(latestProgram()) > 0) && !confirm('Open the shared program? It replaces the program, robot setup and start position here.')) return;
+  if ((recoveryError || (ws ? ws.getAllBlocks(false).length > 0 : countBlocks(state.program) > 0)) && !confirm('Open the shared program? It replaces the program, robot setup and start position here.')) return;
   try { showProgram(data.program); } catch (err) { showMsg('Cannot open shared project: ' + err.message); return; }
   sim.stop();
   if (data.cfg) Object.assign(state.cfg, normalizeConfig(data.cfg));

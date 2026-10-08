@@ -30,6 +30,24 @@ export function registerNames(prog) {
   for (const name of Object.keys(prog.sounds || {})) sounds.add(name);
 }
 
+// Raw workspace saves can include disconnected message/sound blocks, which an
+// AST walk omits. Register their dropdown values before a transactional load.
+export function registerWorkspaceNames(json) {
+  const visit = value => {
+    if (!value || typeof value !== 'object') return;
+    if (value.type && value.fields) {
+      for (const [key, definition] of Object.entries(SPEC[value.type.replace(/^sim_/, '')]?.p || {})) {
+        const name = value.fields[key];
+        if (typeof name !== 'string') continue;
+        if (definition.kind === 'msg' && name !== '__new__') messages.add(name);
+        if (definition.kind === 'sound') sounds.add(name);
+      }
+    }
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(json);
+}
+
 // Color menus show a dot in the color next to its name, like the SPIKE App. Each option is a small
 // picture (dot + name on a white pill) so it reads the same in the menu and on the block.
 const DOT = { black: '#111111', violet: '#7A4FD6', blue: '#1E6FD9', azure: '#3FA9F5', green: '#2F8F4E', yellow: '#E8C21E', red: '#D9342B', white: '#FFFFFF', none: 'none' };

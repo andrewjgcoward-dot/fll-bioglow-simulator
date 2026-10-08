@@ -1,0 +1,110 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "bioglowV1": {
+      "catalog": {
+        ".read": "auth != null && query.orderByKey == true && query.limitToFirst > 0 && query.limitToFirst <= 50",
+        "$id": {
+          ".validate": "newData.hasChildren([\"revision\", \"seq\", \"name\", \"updatedAt\", \"uid\", \"nickname\"]) && newData.getPriority() == null && (newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('revision').val() == newData.child('revision').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('seq').val() == newData.child('seq').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('name').val() == newData.child('name').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('updatedAt').val() == newData.child('updatedAt').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('uid').val() == newData.child('uid').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('nickname').val() == newData.child('nickname').val())",
+          "revision": {
+            ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)"
+          },
+          "seq": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000 && newData.val() % 1 == 0"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$/)"
+          },
+          "updatedAt": {
+            ".validate": "newData.isNumber() && newData.val() == now"
+          },
+          "uid": {
+            ".validate": "newData.isString() && newData.val() == auth.uid"
+          },
+          "nickname": {
+            ".validate": "newData.isString() && newData.val().length <= 32 && newData.val().matches(/^[A-Za-z0-9 _-]*$/)"
+          },
+          "$other": {
+            ".validate": false
+          },
+          ".read": "auth != null",
+          ".write": "auth != null && newData.exists() && $id.matches(/^[a-f0-9]{32}$/) && ((!data.exists() && newData.child('seq').val() == 1) || (data.exists() && newData.child('seq').val() == data.child('seq').val() + 1))"
+        }
+      },
+      "history": {
+        "$id": {
+          ".indexOn": [
+            "seq"
+          ],
+          ".read": "auth != null && query.orderByChild == 'seq' && query.limitToFirst > 0 && query.limitToFirst <= 20",
+          "$rev": {
+            ".validate": "newData.hasChildren([\"revision\", \"seq\", \"name\", \"updatedAt\", \"uid\", \"nickname\", \"previous\", \"restoredFrom\"]) && newData.getPriority() == null && (newData.child('revision').val() == $rev && newData.parent().parent().parent().child('payloads').child($id).child($rev).exists() && newData.parent().parent().parent().child('catalog').child($id).child('revision').val() == newData.child('revision').val() && newData.parent().parent().parent().child('catalog').child($id).child('seq').val() == newData.child('seq').val() && newData.parent().parent().parent().child('catalog').child($id).child('name').val() == newData.child('name').val() && newData.parent().parent().parent().child('catalog').child($id).child('updatedAt').val() == newData.child('updatedAt').val() && newData.parent().parent().parent().child('catalog').child($id).child('uid').val() == newData.child('uid').val() && newData.parent().parent().parent().child('catalog').child($id).child('nickname').val() == newData.child('nickname').val())",
+            "revision": {
+              ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)"
+            },
+            "seq": {
+              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000 && newData.val() % 1 == 0"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$/)"
+            },
+            "updatedAt": {
+              ".validate": "newData.isNumber() && newData.val() == now"
+            },
+            "uid": {
+              ".validate": "newData.isString() && newData.val() == auth.uid"
+            },
+            "nickname": {
+              ".validate": "newData.isString() && newData.val().length <= 32 && newData.val().matches(/^[A-Za-z0-9 _-]*$/)"
+            },
+            "previous": {
+              ".validate": "newData.isString() && ((!root.child('bioglowV1/catalog').child($id).exists() && newData.val() == '') || newData.val() == root.child('bioglowV1/catalog').child($id).child('revision').val())"
+            },
+            "restoredFrom": {
+              ".validate": "newData.isString() && (newData.val() == '' || (newData.val().matches(/^[a-f0-9]{32}$/) && root.child('bioglowV1/history').child($id).child(newData.val()).exists()))"
+            },
+            "$other": {
+              ".validate": false
+            },
+            ".read": "auth != null",
+            ".write": "auth != null && !data.exists() && newData.exists() && $id.matches(/^[a-f0-9]{32}$/) && $rev.matches(/^[a-f0-9]{32}$/)"
+          }
+        }
+      },
+      "payloads": {
+        "$id": {
+          "$rev": {
+            ".validate": "newData.hasChildren([\"version\", \"workspace\", \"start\"]) && newData.getPriority() == null && (newData.parent().parent().parent().child('catalog').child($id).child('revision').val() == $rev && newData.parent().parent().parent().child('history').child($id).child($rev).exists())",
+            "version": {
+              ".validate": "newData.isNumber() && newData.val() == 1"
+            },
+            "workspace": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 131072"
+            },
+            "start": {
+              ".validate": "newData.hasChildren([\"x\", \"y\", \"h\"]) && newData.getPriority() == null && (true)",
+              "x": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 2000"
+              },
+              "y": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1143"
+              },
+              "h": {
+                ".validate": "newData.isNumber() && newData.val() >= -1000000 && newData.val() <= 1000000"
+              },
+              "$other": {
+                ".validate": false
+              }
+            },
+            "$other": {
+              ".validate": false
+            },
+            ".read": "auth != null",
+            ".write": "auth != null && !data.exists() && newData.exists() && $id.matches(/^[a-f0-9]{32}$/) && $rev.matches(/^[a-f0-9]{32}$/)"
+          }
+        }
+      }
+    }
+  }
+}
