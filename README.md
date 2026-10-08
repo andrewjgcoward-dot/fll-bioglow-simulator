@@ -127,3 +127,15 @@ Native stop all, this stack, program and stop-other-stacks are distinct commands
 Imports are validated before installing a program or applying its robot settings. Sensor ports are inferred from event hats as well as predicates/reporters, including event-only projects. The simulator models one sensor per kind; conflicting ports for the same kind are rejected before any project or configuration change. The editor installation is checked for semantic loss and rolls back on failure. Unsupported saved projects are retained in local storage until explicitly replaced. Variable/list declarations and block-driven values survive editor round trips; native nonzero stored values, populated stored lists and duplicate names across scopes and prototype-sensitive names (such as `__proto__` and `constructor`) are rejected with instructions to initialize or rename them in SPIKE. Named/recorded sound data is blocked instead of being discarded; beep commands remain available. Loose and disabled blocks must be connected/enabled or removed before running, downloading or sharing.
 
 This remains a planar simulator with approximate sensors, contact and motor timing. Source-backed opcode/unit tests and browser checks do not establish physical-hub equivalence. Intermediate steering, event startup edges, stop/brake behavior and signed absolute-position behavior still require firmware/hardware comparison. No hub is connected or actuated.
+
+## Shared program library
+
+The shared-library feature uses Firebase Realtime Database and automatic
+anonymous sign-in. Students can load and edit each other's programs, save a copy,
+and restore an old version as a new revision. Saves include the complete block
+workspace and configured initial robot pose. Internet is required. The library is
+intentionally open to all simulator visitors; use no personal information.
+
+The dedicated Firebase project runs on the free Spark plan. See [setup, access
+rules, limits and local tests](SHARED-LIBRARY.md). SPIKE import/export also works
+without a shared-library connection.
