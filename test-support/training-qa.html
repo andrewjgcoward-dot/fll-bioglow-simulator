@@ -15,25 +15,28 @@ testButton.onclick=async()=>{
  const keys=['bioglow-sim-v2','bioglow-practice-v1'],backup=keys.map(k=>localStorage.getItem(k));
  const frame=document.createElement('iframe');frame.src='../';document.querySelector('#host').replaceChildren(frame);
  try{
- await until(()=>frame.contentDocument?.querySelector('#training-choice')?.options.length===5);
+ await until(()=>frame.contentDocument?.querySelectorAll('#training-list button').length===5);
  const w=frame.contentWindow,d=w.document,$=id=>d.getElementById(id),ws=w.Blockly.getMainWorkspace();
+ const enter=id=>{$('training-open').click();d.querySelector('[data-challenge='+id+']').click();};
  const load=async p=>{w.Blockly.serialization.workspaces.load(programToJson(p),ws);await wait(100);};
  const snapshot=()=>w.Blockly.serialization.workspaces.save(ws);
  await load({...emptyProgram(),stacks:[[node('wait',{val:20})]]});
  const loose=ws.newBlock('sim_num');loose.setFieldValue('42','V');loose.initSvg();loose.render();loose.moveBy(260,240);await wait(100);
  const baseline=snapshot(),autosave=localStorage.getItem(keys[0]);
- $('training-enter').click();await wait(150);assert(!$('training-active').hidden,'practice opened');assert(equal(JSON.parse(autosave),JSON.parse(localStorage.getItem(keys[0]))),'main autosave changed during entry');assert($('library-save').disabled,'shared save should be locked');pass('entry isolates raw unfinished main program and shared selection');
- $('training-hint').click();$('training-hint').click();$('training-hint').click();assert($('training-hints').children.length===3&&$('training-hint').disabled,'progressive hints');pass('progressive hints and terminal hint state');
+ assert($('training-panel').hidden,'idle panel should be hidden');assert(w.getComputedStyle($('gh-open')).display==='none','GitHub button visible');
+ $('training-open').click();assert($('training-picker').open,'picker did not open');$('training-close').click();await wait(50);assert(d.activeElement===$('training-open'),'cancel focus');assert(equal(snapshot(),baseline),'cancel changed unsaved work');pass('modal open/cancel preserves draft and restores focus');
+ enter('target');await wait(150);assert(!$('training-active').hidden,'practice opened');assert(equal(JSON.parse(autosave),JSON.parse(localStorage.getItem(keys[0]))),'main autosave changed during entry');assert($('library-save').disabled,'shared save should be locked');pass('entry isolates raw unfinished main program and shared selection');
+ $('training-help').open=true;$('training-hint').click();$('training-hint').click();$('training-hint').click();assert($('training-hints').children.length===3&&$('training-hint').disabled,'progressive hints');pass('progressive hints and terminal hint state');
  await load({...emptyProgram(),stacks:[[node('move',{val:40,unit:'cm'})]]});const draft=snapshot();
- $('training-choice').value='line';$('training-enter').click();await wait(100);$('training-choice').value='target';$('training-enter').click();await wait(100);assert(equal(snapshot(),draft),'draft lost on switch');pass('repeated challenge switches retain separate drafts');
+ enter('line');await wait(100);enter('target');await wait(100);assert(equal(snapshot(),draft),'draft lost on switch');pass('repeated challenge switches retain separate drafts');
  $('run').click();$('pause').click();const frozen=$('debug-state').textContent;await wait(150);assert($('debug-state').textContent===frozen,'paused clock drift');$('single-step').click();assert($('debug-state').textContent.includes('0.020 s'),'step must advance 20 ms');$('pause').click();await until(()=>$('training-feedback').textContent.startsWith('Goal reached.'));pass('pause, step, resume and target feedback');
- $('trial-run').click();await until(()=>!$('trial-run').disabled);assert($('trial-status').textContent.startsWith('20/20 passed'),'ideal batch success');assert($('trial-results').children.length===20,'20 detailed results');pass('20-run ideal batch and paths');
+ $('trial-options').open=true;$('trial-run').click();await until(()=>!$('trial-run').disabled);assert($('trial-status').textContent.startsWith('20/20 passed'),'ideal batch success');assert($('trial-results').children.length===20,'20 detailed results');pass('20-run ideal batch and paths');
  $('trial-scenario').value='custom';$('trial-scenario').dispatchEvent(new w.Event('change'));assert($('trial-results').children.length===0&&!$('trial-status').textContent.includes('/20 passed'),'scenario switch retained stale success');pass('scenario switch invalidates completed results');
  $('trial-scenario').value='ideal';$('trial-scenario').dispatchEvent(new w.Event('change'));
  $('trial-run').click();$('trial-cancel').click();await wait(150);assert($('trial-status').textContent.includes('canceled'),'cancel status');assert($('trial-results').children.length===0,'stale partial results');pass('cancel repeated batch without stale results');
  $('trial-run').click();$('training-leave').click();await wait(150);assert(equal(snapshot(),baseline),'main raw draft not restored');assert(!$('library-save').disabled,'shared save remains disabled after switches');assert($('training-active').hidden,'practice still open');pass('exit during batch restores unfinished draft and original controls');
  $('training-leave').click();assert(equal(snapshot(),baseline),'repeat exit mutated draft');pass('repeated exit is harmless');
- $('training-choice').value='target';$('training-enter').click();await wait(100);assert(equal(snapshot(),draft),'re-enter lost training draft');frame.contentWindow.location.reload();await until(()=>frame.contentDocument?.querySelector('#training-choice')?.options.length===5);await wait(150);const w2=frame.contentWindow;assert(equal(w2.Blockly.serialization.workspaces.save(w2.Blockly.getMainWorkspace()),baseline),'reload lost protected main');pass('reload restores main autosave instead of practice draft');
+ enter('target');await wait(100);assert(equal(snapshot(),draft),'re-enter lost training draft');frame.contentWindow.location.reload();await until(()=>frame.contentDocument?.querySelectorAll('#training-list button').length===5);await wait(150);const w2=frame.contentWindow;assert(equal(w2.Blockly.serialization.workspaces.save(w2.Blockly.getMainWorkspace()),baseline),'reload lost protected main');pass('reload restores main autosave instead of practice draft');
  out.textContent+='ALL BROWSER CHECKS PASSED\n';
  }catch(e){out.textContent+='FAIL '+e.message+'\n'+e.stack;}
  finally{keys.forEach((k,i)=>backup[i]===null?localStorage.removeItem(k):localStorage.setItem(k,backup[i]));frame.remove();testButton.disabled=false;}

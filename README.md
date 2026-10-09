@@ -148,7 +148,14 @@ raw workspaces, poses and all earlier revisions.
 
 ## Practice lab candidate
 
-Five guided driving/sensor challenges are available by difficulty, with measured
+Use the **Practice Lab** button beside Shared programs to choose one of five
+labs grouped by difficulty. The chooser opens in a modal; the main screen shows
+only the selected lab, goal and feedback. Hints, instructions and trials expand
+on demand; the teaching debugger starts collapsed. Return to my program restores
+your main draft. The GitHub import implementation is retained, but its toolbar
+button is hidden.
+
+Five guided driving/sensor challenges provide measured
 feedback, progressive hints and separate drafts. Pause, 20 ms steps and slow
 motion share the existing runtime and readouts. Optional seeded 20-run trials
 compare only the validated simple practice scenes. Ideal and Custom uncertainty

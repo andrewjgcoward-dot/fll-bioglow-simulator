@@ -120,3 +120,21 @@ The continuous edge response changes feedback trajectories. The reference
 proportional line follower (20% speed, gain 0.8, reflection target 49) now stops
 after six simulation seconds. It finishes within 3.2 cm with all driving samples
 within the existing 3 cm line tolerance; grading thresholds were not relaxed.
+
+## Compact lab chooser
+
+Practice Lab opens a native modal dialog with all five labs grouped by difficulty.
+Cancel, Escape and clicking outside close it without changing any draft. Selecting
+a lab closes the chooser and focuses its heading; cancel returns focus to the
+opening button. The active panel has Switch lab and Return to my program, a goal
+and feedback. Hints/instructions and trials are collapsed until requested. The
+idle practice panel is hidden and the teaching debugger starts collapsed.
+
+The Open from GitHub button is hidden from rendering, accessibility and keyboard
+navigation using display:none. Its element, handlers, modal, module and saved
+configuration remain available for later restoration.
+
+Automated callback tests use the real setupTraining/save code with DOM/Blockly
+shims, including all five labs, cancellation, error handling, repeated switching,
+focus destinations and unsaved main restoration. The updated native-browser
+harness remains unrun while the Mac is locked.
