@@ -1188,11 +1188,38 @@ window.addEventListener('hashchange', openShared);
 const PRACTICE_STORE='bioglow-practice-v1';
 const practiceDrafts=(()=>{try{return JSON.parse(localStorage.getItem(PRACTICE_STORE))||{};}catch{return {};}})();
 function setupTraining() {
-  const select=$('training-choice');
+  const picker=$('training-picker');
+  let pickerOpener=$('training-open'), selectedLab=false;
+  const openPicker=opener=>{
+    if(document.querySelector('dialog[open]'))return;
+    pickerOpener=opener;selectedLab=false;$('training-picker-status').textContent='';
+    for(const button of $('training-list').querySelectorAll('button'))button.setAttribute('aria-pressed',String(button.dataset.challenge===training.active));
+    picker.showModal();
+  };
+  $('training-open').onclick=()=>openPicker($('training-open'));
+  $('training-switch').onclick=()=>openPicker($('training-switch'));
+  $('training-close').onclick=()=>picker.close();
+  picker.addEventListener('click',e=>{
+    if(e.target!==picker)return;
+    const r=picker.getBoundingClientRect();
+    if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)picker.close();
+  });
+  // Native dialog supplies focus containment and Escape. Restore a visible
+  // destination after close, including when the switch button became hidden.
+  picker.addEventListener('close',()=>{
+    (selectedLab?$('training-title'):pickerOpener).focus();selectedLab=false;
+  });
   for(const level of [...new Set(CHALLENGES.map(c=>c.level))]) {
-    const group=document.createElement('optgroup');group.label=level;
-    for(const c of CHALLENGES.filter(c=>c.level===level)){const option=document.createElement('option');option.value=c.id;option.textContent=c.title;group.append(option);}
-    select.append(group);
+    const group=document.createElement('section'),heading=document.createElement('h3');heading.textContent=level;group.append(heading);
+    for(const c of CHALLENGES.filter(c=>c.level===level)){
+      const button=document.createElement('button');button.type='button';button.className='gh-file';button.dataset.challenge=c.id;button.textContent=c.title;
+      button.onclick=()=>{try{
+        if(recoveryError)throw Error('Recover or explicitly replace the blocked main workspace before entering practice.');
+        training.enter(c.id);selectedLab=true;picker.close();
+      }catch(e){$('training-picker-status').textContent=e.message;}};
+      group.append(button);
+    }
+    $('training-list').append(group);
   }
   training=createPracticeSession({
     capture:()=>({...structuredClone(state),ws:window.Blockly.serialization.workspaces.save(ws)}),
@@ -1218,8 +1245,9 @@ function setupTraining() {
     changed:id=>{
       projectGeneration++;cancelTrials();trainingRun=null;hintCount=0;trialPaths=[];
       $('training-active').hidden=!id;$('training-leave').hidden=!id;
-      $('training-enter').textContent=id?'Switch challenge':'Open challenge';
-      if(id){select.value=id;$('training-goal').textContent=challenge(id).goal;}
+      $('training-panel').hidden=!id;
+      $('training-help').open=false;$('trial-options').open=false;
+      if(id){$('training-title').textContent=challenge(id).title;$('training-goal').textContent=challenge(id).goal;}
       $('training-hints').replaceChildren();$('training-hint').disabled=false;
       $('training-feedback').textContent='Build a program, then press Run.';
       $('trial-results').replaceChildren();$('trial-status').textContent='Choose conditions; zero values repeat the nominal scene.';
@@ -1235,12 +1263,7 @@ function setupTraining() {
       if(!id)save();
     }
   });
-  $('training-enter').onclick=()=>{try{
-    if(recoveryError)throw Error('Recover or explicitly replace the blocked main workspace before entering practice.');
-    if(document.querySelector('dialog[open]'))throw Error('Close the open dialog first.');
-    training.enter(select.value);
-  }catch(e){showMsg(e.message);}};
-  $('training-leave').onclick=()=>{try{training.leave();}catch(e){showMsg('Could not restore your main workspace: '+e.message);}};
+  $('training-leave').onclick=()=>{try{training.leave();$('training-open').focus();}catch(e){showMsg('Could not restore your main workspace: '+e.message);}};
   $('training-hint').onclick=()=>{if(!training.active)return;const hints=challenge(training.active).hints;if(hintCount<hints.length){const li=document.createElement('li');li.textContent=hints[hintCount++];$('training-hints').append(li);}$('training-hint').disabled=hintCount===hints.length;};
   $('trial-scenario').onchange=()=>{const ideal=$('trial-scenario').value==='ideal';document.querySelectorAll('[data-variation]').forEach(el=>el.disabled=ideal);cancelTrials();trialPaths=[];$('trial-results').replaceChildren();$('trial-status').textContent='Scenario changed. Run a fresh batch.';drawField();};
   $('trial-scenario').onchange();

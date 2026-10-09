@@ -8,7 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232D5A3B'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%238FE3B0'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2026-10-09-training-candidate2">
+<link rel="stylesheet" href="style.css?v=2026-10-09-practice-modal1">
 <script>
   // Phones get a one-view-at-a-time layout (swipe between the code and the table). Set before the
   // first paint so the page doesn't jump; app.js keeps it up to date when the screen turns.
@@ -31,12 +31,13 @@
       <span class="lbl">Import SPIKE file</span>
       <input id="file" type="file" aria-label="Import SPIKE file" accept=".llsp3,.llsp,.sb3,.json" class="file-input">
     </label>
+    <button id="training-open" class="btn" type="button" aria-haspopup="dialog" aria-controls="training-picker">Practice Lab</button>
     <button id="library-open" class="btn" type="button">Shared programs</button>
     <button id="library-save" class="btn" type="button">Save</button>
     <button id="library-copy" class="btn" type="button">Save a copy</button>
     <button id="library-history" class="btn" type="button" disabled>History</button>
     <span id="library-current" class="fine" role="status"></span>
-    <button id="gh-open" class="btn" type="button" aria-label="Open from GitHub">
+    <button id="gh-open" hidden class="btn" type="button" aria-label="Open from GitHub">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
       <span class="lbl">Open from GitHub</span>
     </button>
@@ -52,6 +53,13 @@
 </header>
 
 <div id="msg" class="msg" role="status" hidden></div>
+
+<dialog id="training-picker" aria-labelledby="training-picker-title" aria-describedby="training-picker-description">
+  <div class="row"><h2 id="training-picker-title" class="grow">Practice Lab</h2><button id="training-close" class="btn" type="button" autofocus>Cancel</button></div>
+  <p id="training-picker-description" class="fine">Choose a lab. Each keeps its own practice draft; your main program and robot setup are preserved.</p>
+  <div id="training-list" class="gh-list"></div>
+  <p id="training-picker-status" role="status"></p>
+</dialog>
 
 <dialog id="shared-library" aria-labelledby="library-title">
   <div class="row"><h2 id="library-title" class="grow">Shared programs</h2><button id="library-cancel" class="btn" type="button">Cancel</button></div>
@@ -133,13 +141,15 @@
   </section>
 
   <section class="field-col">
-    <section class="training-panel" aria-labelledby="training-title">
-      <h2 id="training-title">Practice lab</h2>
-      <p class="fine">Guided challenges use a separate practice mat and draft. Your main program, robot setup and shared-program selection are kept safe.</p>
-      <div class="row"><label>Challenge <select id="training-choice"></select></label><button id="training-enter" class="btn">Open challenge</button><button id="training-leave" class="btn" hidden>Return to my program</button></div>
+    <section id="training-panel" class="training-panel" aria-labelledby="training-title" hidden>
+      <div class="row"><h2 id="training-title" class="grow" tabindex="-1">Practice Lab</h2><button id="training-switch" class="btn small" type="button" aria-haspopup="dialog" aria-controls="training-picker">Switch lab</button><button id="training-leave" class="btn small" type="button" hidden>Return to my program</button></div>
       <div id="training-active" hidden>
-        <p id="training-goal"></p><p class="fine">Finish the program, or leave only idle event listeners while all motors stay stopped on the goal for 0.3 seconds. Stop/Reset interrupts an attempt.</p><p class="fine">Practice robot: 56 mm wheels, 112 mm spacing, drive A/B, color C and distance D. Use the existing block editor and Run controls. Import, shared saves and robot/field changes are disabled during practice.</p>
-        <button id="training-hint" class="btn small">Show a hint</button><ol id="training-hints"></ol>
+        <p id="training-goal"></p>
+        <details id="training-help"><summary>Hints and lab instructions</summary>
+          <p class="fine">Finish the program, or leave only idle event listeners while all motors stay stopped on the goal for 0.3 seconds. Stop/Reset interrupts an attempt.</p>
+          <p class="fine">Practice robot: 56 mm wheels, 112 mm spacing, drive A/B, color C and distance D. Use the block editor and Run controls. Import, shared saves and robot/field changes are disabled during practice.</p>
+          <button id="training-hint" class="btn small" type="button">Show a hint</button><ol id="training-hints"></ol>
+        </details>
         <p id="training-feedback" role="status">Build a program, then press Run.</p>
         <details id="trial-options"><summary>20-run reliability trials</summary>
           <p class="fine">An optional sensitivity experiment for this simple scene, not a mission score or a prediction of real LEGO reliability. No “normal LEGO” preset is assumed. Zero settings repeat the nominal scene. Wheel parameters change effective ground travel per encoder degree, not unregulated motor speed.</p>
@@ -179,7 +189,7 @@
       <button id="match" class="btn match" type="button"><span id="match-label">Start 2:30 match</span><span id="clock" class="clock">2:30</span></button>
     </div>
 
-    <details class="debugger-panel" open><summary>Teaching debugger</summary>
+    <details class="debugger-panel"><summary>Teaching debugger</summary>
       <p class="fine">Pause freezes simulation time. From idle, Step starts a new run paused. One step advances every active stack by 20 ms; waits and moves need multiple steps. Existing block highlights and variables follow all stacks. The small magenta disk shows the approximate 8 mm sensing footprint (not measured SPIKE optics); the larger robot circle only locates the sensor; the ray shows distance sensing.</p>
       <p id="debug-state" class="mono"></p><p id="debug-trace" class="mono"></p>
       <p class="fine">Motor degrees count shaft rotation. Chassis heading measures the robot's direction. They are not interchangeable.</p>
@@ -269,7 +279,7 @@
   // Every module gets the release version in its URL, so a browser never mixes old and new files
   // after an update. Bump VERSION (and the stylesheet's ?v=) with each release.
   (function () {
-    var VERSION = '2026-10-09-training-candidate2';
+    var VERSION = '2026-10-09-practice-modal1';
     var files = ['app', 'sim', 'training', 'practice-session', 'blocks', 'blocks-json', 'workspace', 'spike-io', 'robot-view', 'robot-3d', 'field-3d', 'bundled-models', 'bundled-model-decoder', 'bundled-model-codec', 'sha256', 'model-pack', 'model-placement', 'field', 'github', 'share', 'mat-photo', 'sensor-sampling', 'compatibility', 'program-transaction', 'spike-validation', 'workspace-transaction', 'workspace-session', 'save-format', 'shared-library', 'library-ui', 'firebase-config'];
     var map = { imports: { three: './vendor/three/build/three.module.js' } };
     files.forEach(function (f) { map.imports['./src/' + f + '.js'] = './src/' + f + '.js?v=' + VERSION; });
