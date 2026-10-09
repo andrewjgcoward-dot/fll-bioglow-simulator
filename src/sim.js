@@ -1,3 +1,4 @@
+import {areaSampler,SURFACE_RGB} from './sensor-sampling.js';
 import { prepareProgram, CompatibilityError } from './compatibility.js';
 // Robot simulation: a two-wheel SPIKE Prime drive base on the BioGlow mat.
 // Heading is in degrees, clockwise from "north" (away from the home wall).
@@ -149,6 +150,7 @@ export class Sim {
     this.pieces = pieces || [];
     this.docks = Object.assign({}, DEFAULT_DOCKS); // which mission model sits on each dock
     this.approach = Object.assign({}, DEFAULT_APPROACH); // model key (or dock:M15) -> side pushes must come from
+    this.scene = null; this.variation = null; this.random = Math.random;
     this.matPhoto = null; // ([x, y]) -> { color, reflect } read from the mat photo, or null for the plain mat
     this.logLines = [];
     this.onLog = null;
@@ -171,6 +173,7 @@ export class Sim {
 
   // Field objects for this run: fixed models, docks, then loose pieces.
   resetObjects() {
+    if (this.scene) { this.objects = structuredClone(this.scene.objects || []); return; }
     this.objects = MODELS.map(m => Object.assign({}, m))
       .concat(DOCKS.map(d => Object.assign({ dock: true, holds: this.docks[d.key] }, d)))
       .concat(this.pieces.map(p => Object.assign({}, p, { loose: true })));
@@ -189,7 +192,7 @@ export class Sim {
     this.resetObjects();
     this.pose = { x: s.x, y: s.y, h: s.h };
     this.yawZero = s.h;
-    this.program = { stacks: [], procs: {}, vars: [] }; this.threads = []; this.running = false;
+    this.program = { stacks: [], procs: {}, vars: [] }; this.threads = []; this.running = false; this.paused = false; this.runError = null; this.trace = []; this.threadNumber = 0;
     this.drive = null; this.driveAction = null; this.motorActions = {}; this.motorRun = {};
     this.vars = {}; this.lists = {}; this.events = []; this.relZero = {}; this.cmPerRot = null; this.t = 0; this.timer0 = 0; this.noted = new Set();
     this.speedPct = 50;
@@ -447,9 +450,11 @@ export class Sim {
     let yaw = p.h - (this.yawZero === undefined ? p.h : this.yawZero);
     yaw = ((yaw % 360) + 540) % 360 - 180;
     if (!c.yawCW) yaw = -yaw;
-    const ph = this.matPhoto ? this.matPhoto(sp) : null;
-    const color = this.matPhoto ? (ph ? ph.color : 'none') : matColor(sp);
-    return { color, reflect: ph ? ph.reflect : REFLECT[color] ?? 0, spot: sp, dist: t <= 2000 ? Math.max(0, t) / 10 : null, rayLen: Math.min(Math.max(0, t), 2000), origin: o, dirAng, yaw };
+    const ph = this.scene ? this.scene.sample(sp) : this.matPhoto ? this.matPhoto(sp) : plainMatSample(sp);
+    const color = ph?.color || 'none';
+    const bias = this.variation || {};
+    if (Number.isFinite(t)) t = Math.max(0, t + (bias.distanceMm || 0));
+    return { color, reflect: ph ? clamp(ph.reflect + (bias.reflect || 0), 0, 100) : 0, spot: sp, dist: t <= 2000 ? Math.max(0, t) / 10 : null, rayLen: Math.min(Math.max(0, t), 2000), origin: o, dirAng, yaw };
   }
 
   // ---------- running programs ----------
@@ -460,7 +465,7 @@ export class Sim {
   // In a match the field stays as it is and the robot relaunches from home.
   run(program) {
     program = prepareProgram(program); // Validate before reset, motion or state changes.
-    this.exited = false;
+    this.exited = false; this.paused = false; this.runError = null; this.trace = []; this.threadNumber = 0;
     if (!this.matchOn) this.reset();
     else {
       if (!this.inHome()) { this.log('Relaunch from home: robot moved back to the start position.'); this.placeRobot(); }
@@ -487,7 +492,7 @@ export class Sim {
   }
 
   spawn(body) {
-    const th = { cur: null, done: false, stopped: false, depth: 0 };
+    const th = { number: ++this.threadNumber, cur: null, done: false, stopped: false, depth: 0 };
     th.gen = this.execList(body, th, { args: {} });
     return th;
   }
@@ -531,6 +536,7 @@ export class Sim {
       if (e.ev.hat.t === 'whenBroadcast') continue;
       const now = !!this.hatValue(e.ev.hat);
       if (now && !e.prev && (!e.thread || e.thread.done)) { e.thread = this.spawn(e.ev.body); this.threads.push(e.thread); }
+      if(now!==e.prev)this.record({number:e.thread?.number||'event'},e.ev.hat,now);
       e.prev = now;
     }
   }
@@ -538,7 +544,7 @@ export class Sim {
   // Returns true when the stop costs a precision token (interrupted outside home during a match).
   stop() {
     const was = this.running || this.drive || Object.keys(this.motorRun).length;
-    this.running = false; this.stopMotion(); this.sound({ type: 'stop' });
+    this.running = false; this.paused = false; this.stopMotion(); this.sound({ type: 'stop' });
     if (was && this.matchOn && !this.inHome()) { this.log('Interrupted outside home: lost a precision token.'); return true; }
     if (was) this.log('Stopped.');
     return false;
@@ -559,10 +565,29 @@ export class Sim {
     if (!this.running) { this.pair = this.cfg.pair; this.physicalPair = this.cfg.pair; }
   }
 
-  finish(msg) { this.running = false; this.stopMotion(); this.sound({ type: 'stop' }); this.log(msg); }
+  finish(msg) { this.running = false; this.paused = false; this.stopMotion(); this.sound({ type: 'stop' }); this.log(msg); }
 
   startMatch() { this.reset(); this.matchT = 0; this.matchOn = true; this.logLines = []; this.log('Match started. Press Run to launch.'); }
   endMatch() { this.matchOn = false; this.running = false; this.stopMotion(); this.log('Match stopped.'); }
+
+  pause(value = true) {
+    this.paused = !!value && (this.running || this.matchOn);
+    if (this.paused) this.sound({ type: 'stop' });
+  }
+  // One scheduler quantum advances ALL stacks together. A paused wall clock
+  // cannot advance waits, sensor events, motors, or the match timer.
+  singleStep() {
+    if (!this.paused) return;
+    for (let i = 0; i < 5; i++) this.step(STEP, true);
+    if (this.running || this.matchOn) this.paused = true;
+  }
+  record(th, statement, outcome) {
+    const item = { stack: th.number, id: statement.id || null, type: statement.t, time: this.t, outcome };
+    const last = this.trace.at(-1);
+    if (last && last.stack === item.stack && last.id === item.id && last.type === item.type && last.outcome === outcome) this.trace[this.trace.length - 1] = item;
+    else this.trace.push(item);
+    if (this.trace.length > 30) this.trace.shift();
+  }
 
   // Ids of the blocks running right now (one per active stack), for highlighting.
   activeIds() { return this.running ? this.threads.filter(t => !t.done && t.cur).map(t => t.cur) : []; }
@@ -584,7 +609,7 @@ export class Sim {
       case 'random': {
         const a = N(e.a), b = N(e.b), lo = Math.min(a, b), hi = Math.max(a, b);
         const ints = Number.isInteger(a) && Number.isInteger(b) && !String(this.val(e.a, scope)).includes('.') && !String(this.val(e.b, scope)).includes('.');
-        return ints ? lo + Math.floor(Math.random() * (hi - lo + 1)) : lo + Math.random() * (hi - lo);
+        return ints ? lo + Math.floor(this.random() * (hi - lo + 1)) : lo + this.random() * (hi - lo);
       }
       case 'round': return Math.round(N(e.a));
       case 'mathop': return mathop(e.fn, N(e.a));
@@ -615,7 +640,7 @@ export class Sim {
         const l = this.lists[e.list] || [];
         return l.every(x => String(x).length === 1) ? l.join('') : l.join(' ');
       }
-      case 'listItem': { const l = this.lists[e.list] || [], i = listIndex(this.val(e.index, scope), l.length); return i ? l[i - 1] : ''; }
+      case 'listItem': { const l = this.lists[e.list] || [], i = listIndex(this.val(e.index, scope), l.length, this.random); return i ? l[i - 1] : ''; }
       case 'listIndexOf': { const l = this.lists[e.list] || [], x = this.val(e.item, scope); return l.findIndex(v => compare(v, x) === 0) + 1; }
       case 'listLength': return (this.lists[e.list] || []).length;
       case 'listContains': { const x = this.val(e.item, scope); return (this.lists[e.list] || []).some(v => compare(v, x) === 0); }
@@ -654,7 +679,12 @@ export class Sim {
 
   *exec(s, th, scope) {
     th.cur = s.id || th.cur;
-    const N = (x) => this.num(x, scope), B = (x) => this.bool(x, scope);
+    this.record(th, s);
+    const N = (x) => this.num(x, scope), B = (x) => {
+      const result = this.bool(x, scope);
+      if (x === s.cond) this.record(th, s, result);
+      return result;
+    };
     const ports = (p) => String(p || '').split('').filter(x => this.arms[x] !== undefined);
     switch (s.t) {
       case 'move': yield* this.driveFor(this.dirFactors(s.dir), N(s.val), s.unit); break;
@@ -708,12 +738,12 @@ export class Sim {
       case 'listDelete': {
         const l = this.list(s.list), raw = this.val(s.index, scope);
         if (String(raw).toLowerCase() === 'all') l.length = 0;
-        else { const i = listIndex(raw, l.length); if (i) l.splice(i - 1, 1); }
+        else { const i = listIndex(raw, l.length, this.random); if (i) l.splice(i - 1, 1); }
         break;
       }
       case 'listClear': this.list(s.list).length = 0; break;
-      case 'listInsert': { const l = this.list(s.list), i = listIndex(this.val(s.index, scope), l.length + 1); if (i && l.length < 200000) l.splice(i - 1, 0, this.val(s.item, scope)); break; }
-      case 'listReplace': { const l = this.list(s.list), i = listIndex(this.val(s.index, scope), l.length); if (i) l[i - 1] = this.val(s.item, scope); break; }
+      case 'listInsert': { const l = this.list(s.list), i = listIndex(this.val(s.index, scope), l.length + 1, this.random); if (i && l.length < 200000) l.splice(i - 1, 0, this.val(s.item, scope)); break; }
+      case 'listReplace': { const l = this.list(s.list), i = listIndex(this.val(s.index, scope), l.length, this.random); if (i) l[i - 1] = this.val(s.item, scope); break; }
       case 'repeat': {
         const n = Math.round(N(s.times));
         for (let i = 0; i < n; i++) { yield* this.execList(s.body, th, scope); if (!this.running || th.stopped) return; yield; }
@@ -744,7 +774,7 @@ export class Sim {
       case 'call': {
         const proc = this.program.procs && this.program.procs[s.name];
         if (!proc) { this.noteOnce(s, 'My Block “' + s.name + '” has no definition.'); break; }
-        if (th.depth >= 200) { this.finish('Stopped: “' + s.name + '” calls itself too many times.'); return; }
+        if (th.depth >= 200) { this.runError = 'My Block “' + s.name + '” calls itself too many times.'; this.finish('Stopped: ' + this.runError); return; }
         const args = {};
         for (const p of proc.params) args[p.name] = p.kind === 'b' ? B(s.args && s.args[p.name]) : this.val(s.args && s.args[p.name], scope);
         th.depth++;
@@ -832,17 +862,19 @@ export class Sim {
 
   // Advance the simulation by dt seconds (any size; it is split into small steps).
   advance(dt) {
+    if (this.paused) return;
     while (dt > 1e-9) { const h = Math.min(STEP, dt); this.step(h); dt -= h; }
   }
 
-  step(dt) {
+  step(dt, whilePaused = false) {
+    if (this.paused && !whilePaused) return;
     const cfg = this.cfg;
     if (this.running) {
       this.t += dt;
       for (const th of this.threads) {
         if (th.done || th.stopped || !this.running) { if (th.stopped) th.done = true; continue; }
         try { if (th.gen.next(dt).done) th.done = true; }
-        catch (err) { th.done = true; this.finish('Error in program: ' + err.message); }
+        catch (err) { th.done = true; this.runError = err.message; this.finish('Error in program: ' + err.message); }
       }
       if (this.running) this.checkEvents();
       this.threads = this.threads.filter(th => !th.done);
@@ -896,7 +928,7 @@ export class Sim {
       L = -limitTravel(physicalLeft, -L * dt) / dt; R = limitTravel(physicalRight, R * dt) / dt;
       this.vel = { L, R };
       const k = Math.PI * cfg.wheel / 360;
-      const vL = L * k, vR = R * k, v = (vL + vR) / 2, w = (vL - vR) / cfg.track;
+      const vL = L * k * (this.variation?.leftTravel ?? 1), vR = R * k * (this.variation?.rightTravel ?? 1), v = (vL + vR) / 2, w = (vL - vR) / cfg.track;
       const h0 = rad(this.pose.h), h1 = h0 + w * dt, hm = (h0 + h1) / 2;
       const np = { x: this.pose.x + v * Math.sin(hm) * dt, y: this.pose.y + v * Math.cos(hm) * dt, h: h1 * 180 / Math.PI };
       const hit = this.tryMove(np);
@@ -959,7 +991,8 @@ export class Sim {
       if (a.stall > 1) { a.done = true; this.log('Motors stalled for 1 s, moving to the next block.'); }
     }
 
-    this.runMechanisms(dt);
+    if (!this.scene) this.runMechanisms(dt);
+    this.onStep?.(dt);
 
     if (this.matchOn) {
       this.matchT += dt;
@@ -974,10 +1007,10 @@ export class Sim {
 }
 
 // Scratch list index: 1-based number, or "last" / "random" / "any". Returns 0 when out of range.
-function listIndex(raw, length) {
+function listIndex(raw, length, random = Math.random) {
   const t = String(raw).toLowerCase();
   if (t === 'last') return length;
-  if (t === 'random' || t === 'any') return length ? 1 + Math.floor(Math.random() * length) : 0;
+  if (t === 'random' || t === 'any') return length ? 1 + Math.floor(random() * length) : 0;
   const i = Math.floor(Number(raw));
   return i >= 1 && i <= length ? i : 0;
 }
@@ -1010,6 +1043,8 @@ function mathop(fn, x) {
 // on the mat photo they come from the photo (mat-photo.js).
 const COLOR_ID = { black: 0, violet: 1, blue: 3, azure: 4, green: 6, yellow: 7, red: 9, white: 10, none: -1 };
 const REFLECT = { black: 8, white: 98, red: 60, blue: 30, green: 25, yellow: 85, none: 0 };
+
+export const plainMatSample = areaSampler(p=>{const color=matColor(p);return {rgb:SURFACE_RGB[color],reflect:REFLECT[color]??0};},FW,FH);
 
 // Calibration from test runs on the real robot (see the Robot tab).
 // 1. "move forward for n rotations" went cm centimetres -> effective wheel diameter (mm).

@@ -272,3 +272,7 @@ h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.1; }
 #shared-library { border: 1px solid #ccc; border-radius: 12px; padding: 20px; }
 #shared-library input { box-sizing: border-box; max-width: 100%; }
 #library-list { max-height: 45vh; overflow: auto; }
+
+/* Practice controls share the simulator's typography and controls. */
+.training-panel,.debugger-panel{background:var(--paper,#f6f7f2);border:1px solid #c4d2c9;border-radius:12px;padding:14px;margin-bottom:12px;color:#203c32}
+.training-panel h2{font-size:19px;margin:0 0 8px}.training-panel select{max-width:100%}.training-panel .row{flex-wrap:wrap}.training-panel label{display:flex;flex-direction:column;gap:4px}.training-panel input{width:100%;box-sizing:border-box}.training-panel summary,.debugger-panel summary{font-weight:700;cursor:pointer}.training-panel ol{padding-left:24px}.training-panel li{margin:6px 0}.trial-results{max-height:180px;overflow:auto}.debugger-panel p{margin:8px 0;overflow-wrap:anywhere}#training-feedback{font-weight:700}.training-panel [hidden]{display:none!important}

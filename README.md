@@ -50,7 +50,7 @@ Kids can build a program from SPIKE™ Prime–style word blocks, or import one 
 - Mission mechanisms are simplified: any push or press on the right model completes it. Real models need the right direction, force or attachment, and some items are still scored by hand: M07's connection with the other team's root and M14's seeds-touching-the-mat bonus. Arms can push pieces but not pick them up.
 - Arms are limited to straight front/back/left/right directions, with no odd angles, linkages or multi-joint arms.
 - Not simulated yet: SPIKE Python projects; tilt, shake and orientation start blocks (the simulated robot never tilts); the real sound recordings (a stand-in plays instead).
-- Sensor values are simplified. The color sensor reports SPIKE color numbers. On the mat photo it names the photo's colors by hue (sand and other orange shades read yellow, grey reads no color) and takes reflected light from brightness, so black lines read about 8 and white about 98; on the plain mat reflected light is a rough guess per color. The distance reporter gives 200 when nothing is in range; check that against your real sensor. Pitch and roll are always 0. The force sensor counts as pressed when the front of the robot is pushing on something.
+- Sensor values are simplified. The color sensor reports SPIKE color numbers. On the mat photo it names the photo's colors by hue (sand and other orange shades read yellow, grey reads no color) and takes reflected light from brightness, so black lines read about 8 and white about 98; on the plain mat reflected light is a rough guess per color. Photo, plain and practice modes average an approximate 8 mm diameter footprint with 1 mm grid interpolation for gradual edge readings; this is not measured SPIKE optics. The small magenta disk shows that footprint, while the larger circle locates the sensor. See [TRAINING.md](TRAINING.md#color-sensing-footprint) for aggregation and boundary behavior. The distance reporter gives 200 when nothing is in range; check that against your real sensor. Pitch and roll are always 0. The force sensor counts as pressed when the front of the robot is pushing on something.
 - Exported files re-import here, but opening them in the SPIKE App hasn't been confirmed yet.
 - There is no live connection to the SPIKE App. Moving programs with files works everywhere. A desktop "virtual hub" helper might be possible later.
 
@@ -145,3 +145,12 @@ without a shared-library connection.
 The owner-only rename/archive/restore interface is enabled at `admin.html`. See [admin access and setup](ADMIN.md).
 Students keep anonymous shared editing; administrative actions preserve IDs,
 raw workspaces, poses and all earlier revisions.
+
+## Practice lab candidate
+
+Five guided driving/sensor challenges are available by difficulty, with measured
+feedback, progressive hints and separate drafts. Pause, 20 ms steps and slow
+motion share the existing runtime and readouts. Optional seeded 20-run trials
+compare only the validated simple practice scenes. Ideal and Custom uncertainty
+are sensitivity scenarios, not measured LEGO reliability presets. See
+[practice behavior, preservation and variability evidence](TRAINING.md).
