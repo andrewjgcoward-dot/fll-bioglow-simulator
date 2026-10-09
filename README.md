@@ -139,3 +139,9 @@ intentionally open to all simulator visitors; use no personal information.
 The dedicated Firebase project runs on the free Spark plan. See [setup, access
 rules, limits and local tests](SHARED-LIBRARY.md). SPIKE import/export also works
 without a shared-library connection.
+
+## Library administration
+
+The owner-only rename/archive/restore interface is enabled at `admin.html`. See [admin access and setup](ADMIN.md).
+Students keep anonymous shared editing; administrative actions preserve IDs,
+raw workspaces, poses and all earlier revisions.

@@ -8,7 +8,8 @@
     "test": "node --test",
     "start": "python -m http.server 8000",
     "build:firebase": "node tools/build-firebase.mjs",
-    "test:firebase": "firebase emulators:exec --only auth,database --project demo-bioglow \"BIOGLOW_EMULATOR_TEST=1 node --test test-firebase/shared-library.test.mjs\""
+    "test:firebase": "firebase emulators:exec --only auth,database --project demo-bioglow \"BIOGLOW_EMULATOR_TEST=1 node --test test-firebase/shared-library.test.mjs\"",
+    "test:admin": "firebase emulators:exec --config firebase.admin-qa.json --only auth,database --project demo-bioglow-admin \"BIOGLOW_ADMIN_EMULATOR_TEST=1 node --test test-firebase/admin-library.test.mjs\""
   },
   "devDependencies": {
     "firebase": "12.5.0",

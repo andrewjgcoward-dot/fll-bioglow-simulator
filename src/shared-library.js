@@ -5,20 +5,20 @@ export const validProjectName = name => typeof name === 'string' && /^[A-Za-z0-9
 const validId = id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id);
 const id = () => Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join('');
 export class ConflictError extends Error { constructor(){super('Someone saved a newer version. Your workspace is unchanged. Load the latest version or choose Save a copy.');this.name='ConflictError';} }
-export function createRevision({programId,revision=id(),base,name,nickname='',uid,payload,restoredFrom=''}) {
+export function createRevision({programId,revision=id(),base,name,nickname='',uid,payload,restoredFrom='',archived=base?.archived===true}) {
   if(!validId(programId)||!validId(revision)||!validProjectName(name)||!/^[A-Za-z0-9 _-]{0,32}$/.test(nickname)||typeof uid!=='string') throw new Error('Use a project name of 1–64 letters, numbers, spaces, dashes or underscores.');
   if(base && (!validId(base.revision)||!Number.isInteger(base.seq)||base.seq<1)) throw new Error('Invalid base revision.');
   if(restoredFrom && !validId(restoredFrom))throw new Error('Invalid history revision.');
   const encoded=encodeSave(payload);
   if(new TextEncoder().encode(encoded).byteLength>LIBRARY_LIMIT)throw new Error('Shared saves are limited to 128 KiB. Export a file for larger projects.');
-  const meta={revision,seq:(base?.seq||0)+1,name,nickname,uid,updatedAt:{'.sv':'timestamp'}};
+  const meta={archived,revision,seq:(base?.seq||0)+1,name,nickname,uid,updatedAt:{'.sv':'timestamp'}};
   return {
     [`catalog/${programId}`]:meta,
     [`history/${programId}/${revision}`]:{...meta,previous:base?.revision||'',restoredFrom},
     [`payloads/${programId}/${revision}`]:{version:1,workspace:JSON.stringify(payload.workspace),start:{...payload.start}}
   };
 }
-export function createSharedLibrary({request,session,newId=id}) {
+export function createSharedLibrary({request,session,newId=id,administrative=false}) {
   const safeId=value=>{if(!validId(value))throw new Error('Invalid library identifier.');return value;};
   const header=async programId=>request('catalog/'+safeId(programId));
   return {
@@ -28,13 +28,14 @@ export function createSharedLibrary({request,session,newId=id}) {
       const value=await request('catalog', {query});
       const rows=Object.entries(value||{}).sort(([a],[b])=>a.localeCompare(b)).map(([id,meta])=>({id,...meta}));
       // Fetch one overlapping item when paging; skip it without a gallery subscription.
-      return {items:rows.filter(row=>row.id!==cursor),cursor:rows.length===PAGE_SIZE?rows.at(-1).id:null};
+      return {items:rows.filter(row=>row.id!==cursor && (administrative || row.archived!==true)),cursor:rows.length===PAGE_SIZE?rows.at(-1).id:null};
     },
     header,
     async load(programId,revision){
       safeId(programId);
       const meta=revision?await request(`history/${programId}/${safeId(revision)}`):await header(programId);
       if(!meta)throw new Error('This save no longer exists.');
+      if(!administrative && (await header(programId))?.archived===true)throw new Error('This program has been archived. Your workspace is unchanged. You can save a copy.');
       const record=await request(`payloads/${programId}/${safeId(meta.revision)}`);
       if(!record||typeof record.workspace!=='string'||record.workspace.length>LIBRARY_LIMIT)throw new Error('Invalid shared save.');
       let payload;
@@ -48,10 +49,12 @@ export function createSharedLibrary({request,session,newId=id}) {
       const rows=Object.values(value||{}).sort((a,b)=>a.seq-b.seq);
       return {items:rows,cursor:rows.length===PAGE_SIZE?rows.at(-1).seq:null};
     },
-    async save({programId=newId(),base=null,name,nickname='',payload,restoredFrom=''}){
+    async save({programId=newId(),base=null,name,nickname='',payload,restoredFrom='',archived=base?.archived===true}){
       validateSave(payload);
+      if(!administrative && (archived || base?.archived))throw new Error('This program has been archived. Save a copy to keep editing.');
+      if(!administrative && base?.name && name!==base.name)throw new Error('Only the administrator can rename an existing program. Use Save a copy for a new name.');
       const {uid}=await session();
-      const patch=createRevision({programId,revision:newId(),base,name,nickname,uid,payload,restoredFrom});
+      const patch=createRevision({programId,revision:newId(),base,name,nickname,uid,payload,restoredFrom,archived});
       try {await request('',{method:'PATCH',body:patch});}
       catch(err){
         // Do not retry or rebase automatically: the user's explicit base stays fixed.
@@ -75,7 +78,7 @@ export function firebaseTransport({databaseURL,session,fetcher=fetch,namespace})
   } else if(base.protocol!=='https:'||!/^[-a-z0-9.]+\.(firebaseio\.com|firebasedatabase\.app)$/.test(base.hostname))throw new Error('Invalid Firebase Realtime Database URL.');
   if(base.username||base.password||base.search||base.hash||base.pathname!=='/')throw new Error('Invalid database address.');
   return async(path,{method='GET',body,query={}}={})=>{
-    if(!/^(?:catalog(?:\/[a-f0-9]{32})?|history\/[a-f0-9]{32}(?:\/[a-f0-9]{32})?|payloads\/[a-f0-9]{32}\/[a-f0-9]{32})?$/.test(path))throw new Error('Invalid library path.');
+    if(!/^(?:adminAccess|catalog(?:\/[a-f0-9]{32})?|history\/[a-f0-9]{32}(?:\/[a-f0-9]{32})?|payloads\/[a-f0-9]{32}\/[a-f0-9]{32})?$/.test(path))throw new Error('Invalid library path.');
     const auth=await session();
     const url=new URL('bioglowV1'+(path?'/'+path:'')+'.json',base);
     url.searchParams.set('auth',await auth.token());

@@ -3,10 +3,14 @@
     ".read": false,
     ".write": false,
     "bioglowV1": {
+      "adminAccess": {
+        ".read": "(auth != null && auth.token.email == 'mike.coward@gmail.com' && auth.token.email_verified == true && auth.token.firebase.sign_in_provider == 'google.com')",
+        ".write": false
+      },
       "catalog": {
         ".read": "auth != null && query.orderByKey == true && query.limitToFirst > 0 && query.limitToFirst <= 50",
         "$id": {
-          ".validate": "newData.hasChildren([\"revision\", \"seq\", \"name\", \"updatedAt\", \"uid\", \"nickname\"]) && newData.getPriority() == null && (newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('revision').val() == newData.child('revision').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('seq').val() == newData.child('seq').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('name').val() == newData.child('name').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('updatedAt').val() == newData.child('updatedAt').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('uid').val() == newData.child('uid').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('nickname').val() == newData.child('nickname').val())",
+          ".validate": "newData.hasChildren([\"revision\", \"seq\", \"name\", \"updatedAt\", \"uid\", \"nickname\"]) && newData.getPriority() == null && (newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('revision').val() == newData.child('revision').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('seq').val() == newData.child('seq').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('name').val() == newData.child('name').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('updatedAt').val() == newData.child('updatedAt').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('uid').val() == newData.child('uid').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('nickname').val() == newData.child('nickname').val() && newData.parent().parent().child('history').child($id).child(newData.child('revision').val()).child('archived').val() == newData.child('archived').val())",
           "revision": {
             ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)"
           },
@@ -22,6 +26,9 @@
           "uid": {
             ".validate": "newData.isString() && newData.val() == auth.uid"
           },
+          "archived": {
+            ".validate": "newData.isBoolean()"
+          },
           "nickname": {
             ".validate": "newData.isString() && newData.val().length <= 32 && newData.val().matches(/^[A-Za-z0-9 _-]*$/)"
           },
@@ -29,7 +36,7 @@
             ".validate": false
           },
           ".read": "auth != null",
-          ".write": "auth != null && newData.exists() && $id.matches(/^[a-f0-9]{32}$/) && ((!data.exists() && newData.child('seq').val() == 1) || (data.exists() && newData.child('seq').val() == data.child('seq').val() + 1))"
+          ".write": "auth != null && newData.exists() && $id.matches(/^[a-f0-9]{32}$/) && ((!data.exists() && newData.child('seq').val() == 1 && newData.child('archived').val() != true) || (data.exists() && newData.child('seq').val() == data.child('seq').val() + 1 && ((data.child('archived').val() != true && newData.child('archived').val() != true && newData.child('name').val() == data.child('name').val()) || (auth != null && auth.token.email == 'mike.coward@gmail.com' && auth.token.email_verified == true && auth.token.firebase.sign_in_provider == 'google.com'))))"
         }
       },
       "history": {
@@ -37,9 +44,9 @@
           ".indexOn": [
             "seq"
           ],
-          ".read": "auth != null && query.orderByChild == 'seq' && query.limitToFirst > 0 && query.limitToFirst <= 20",
+          ".read": "auth != null && (root.child('bioglowV1/catalog').child($id).child('archived').val() != true || (auth != null && auth.token.email == 'mike.coward@gmail.com' && auth.token.email_verified == true && auth.token.firebase.sign_in_provider == 'google.com')) && query.orderByChild == 'seq' && query.limitToFirst > 0 && query.limitToFirst <= 20",
           "$rev": {
-            ".validate": "newData.hasChildren([\"revision\", \"seq\", \"name\", \"updatedAt\", \"uid\", \"nickname\", \"previous\", \"restoredFrom\"]) && newData.getPriority() == null && (newData.child('revision').val() == $rev && newData.parent().parent().parent().child('payloads').child($id).child($rev).exists() && newData.parent().parent().parent().child('catalog').child($id).child('revision').val() == newData.child('revision').val() && newData.parent().parent().parent().child('catalog').child($id).child('seq').val() == newData.child('seq').val() && newData.parent().parent().parent().child('catalog').child($id).child('name').val() == newData.child('name').val() && newData.parent().parent().parent().child('catalog').child($id).child('updatedAt').val() == newData.child('updatedAt').val() && newData.parent().parent().parent().child('catalog').child($id).child('uid').val() == newData.child('uid').val() && newData.parent().parent().parent().child('catalog').child($id).child('nickname').val() == newData.child('nickname').val())",
+            ".validate": "newData.hasChildren([\"revision\", \"seq\", \"name\", \"updatedAt\", \"uid\", \"nickname\", \"previous\", \"restoredFrom\"]) && newData.getPriority() == null && (newData.child('revision').val() == $rev && newData.parent().parent().parent().child('payloads').child($id).child($rev).exists() && newData.parent().parent().parent().child('catalog').child($id).child('revision').val() == newData.child('revision').val() && newData.parent().parent().parent().child('catalog').child($id).child('seq').val() == newData.child('seq').val() && newData.parent().parent().parent().child('catalog').child($id).child('name').val() == newData.child('name').val() && newData.parent().parent().parent().child('catalog').child($id).child('updatedAt').val() == newData.child('updatedAt').val() && newData.parent().parent().parent().child('catalog').child($id).child('uid').val() == newData.child('uid').val() && newData.parent().parent().parent().child('catalog').child($id).child('nickname').val() == newData.child('nickname').val() && newData.parent().parent().parent().child('catalog').child($id).child('archived').val() == newData.child('archived').val())",
             "revision": {
               ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)"
             },
@@ -55,6 +62,9 @@
             "uid": {
               ".validate": "newData.isString() && newData.val() == auth.uid"
             },
+            "archived": {
+              ".validate": "newData.isBoolean()"
+            },
             "nickname": {
               ".validate": "newData.isString() && newData.val().length <= 32 && newData.val().matches(/^[A-Za-z0-9 _-]*$/)"
             },
@@ -67,7 +77,7 @@
             "$other": {
               ".validate": false
             },
-            ".read": "auth != null",
+            ".read": "auth != null && (root.child('bioglowV1/catalog').child($id).child('archived').val() != true || (auth != null && auth.token.email == 'mike.coward@gmail.com' && auth.token.email_verified == true && auth.token.firebase.sign_in_provider == 'google.com'))",
             ".write": "auth != null && !data.exists() && newData.exists() && $id.matches(/^[a-f0-9]{32}$/) && $rev.matches(/^[a-f0-9]{32}$/)"
           }
         }
@@ -75,7 +85,7 @@
       "payloads": {
         "$id": {
           "$rev": {
-            ".validate": "newData.hasChildren([\"version\", \"workspace\", \"start\"]) && newData.getPriority() == null && (newData.parent().parent().parent().child('catalog').child($id).child('revision').val() == $rev && newData.parent().parent().parent().child('history').child($id).child($rev).exists())",
+            ".validate": "newData.hasChildren([\"version\", \"workspace\", \"start\"]) && newData.getPriority() == null && (newData.parent().parent().parent().child('catalog').child($id).child('revision').val() == $rev && newData.parent().parent().parent().child('history').child($id).child($rev).exists()) && (!(root.child('bioglowV1/catalog').child($id).exists() && (newData.parent().parent().parent().child('catalog').child($id).child('name').val() != root.child('bioglowV1/catalog').child($id).child('name').val() || (newData.parent().parent().parent().child('catalog').child($id).child('archived').val() == true) != (root.child('bioglowV1/catalog').child($id).child('archived').val() == true))) || ((auth != null && auth.token.email == 'mike.coward@gmail.com' && auth.token.email_verified == true && auth.token.firebase.sign_in_provider == 'google.com') && newData.child('version').val() == root.child('bioglowV1/payloads').child($id).child(root.child('bioglowV1/catalog').child($id).child('revision').val()).child('version').val() && newData.child('workspace').val() == root.child('bioglowV1/payloads').child($id).child(root.child('bioglowV1/catalog').child($id).child('revision').val()).child('workspace').val() && newData.child('start/x').val() == root.child('bioglowV1/payloads').child($id).child(root.child('bioglowV1/catalog').child($id).child('revision').val()).child('start/x').val() && newData.child('start/y').val() == root.child('bioglowV1/payloads').child($id).child(root.child('bioglowV1/catalog').child($id).child('revision').val()).child('start/y').val() && newData.child('start/h').val() == root.child('bioglowV1/payloads').child($id).child(root.child('bioglowV1/catalog').child($id).child('revision').val()).child('start/h').val()))",
             "version": {
               ".validate": "newData.isNumber() && newData.val() == 1"
             },
@@ -100,7 +110,7 @@
             "$other": {
               ".validate": false
             },
-            ".read": "auth != null",
+            ".read": "auth != null && (root.child('bioglowV1/catalog').child($id).child('archived').val() != true || (auth != null && auth.token.email == 'mike.coward@gmail.com' && auth.token.email_verified == true && auth.token.firebase.sign_in_provider == 'google.com'))",
             ".write": "auth != null && !data.exists() && newData.exists() && $id.matches(/^[a-f0-9]{32}$/) && $rev.matches(/^[a-f0-9]{32}$/)"
           }
         }
