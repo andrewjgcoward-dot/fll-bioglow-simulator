@@ -1,3 +1,6 @@
+import {SPOT_R} from './sensor-sampling.js';
+import {CHALLENGES,challenge,configureChallenge,observeChallenge,evaluateChallenge,starterProgram,reliabilityTrials} from './training.js';
+import {createPracticeSession} from './practice-session.js';
 import { installSavedWorkspace } from './workspace-transaction.js';
 import { createWorkspaceSession } from './workspace-session.js';
 import { setupLibrary } from './library-ui.js';
@@ -23,6 +26,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 // ---------- state (program, robot and score survive a reload) ----------
 
 const STORE = 'bioglow-sim-v2';
+let training = null, projectGeneration = 0, trialGeneration = 0, trainingRun = null, trialPaths = [];
+let hintCount = 0, trialBusy = false;
 function load() {
   try {
     const v2 = JSON.parse(localStorage.getItem(STORE));
@@ -64,6 +69,7 @@ const state = {
   mat: saved.mat === 'plain' ? 'plain' : 'photo'
 };
 function save() {
+  if (training?.active || training?.transitioning) { training.remember(); return; }
   if (recoveryError) return; // Keep an unsupported saved project intact until explicitly replaced.
   try {
     localStorage.setItem(STORE, JSON.stringify({
@@ -119,6 +125,7 @@ function tone(freq, seconds, volume, type) {
   return o;
 }
 sim.onSound = (e) => {
+  if(sim.paused && e.type!=='stop')return;
   if (e.type === 'stop') { for (const o of voices) { try { o.stop(); } catch { /* already stopped */ } } voices.clear(); beepVoice = null; return; }
   if (e.type === 'beep') {
     if (beepVoice) { try { beepVoice.stop(); } catch { /* already stopped */ } }
@@ -159,12 +166,17 @@ function buildField() {
   for (let r = 1; r <= 6; r++) { const t = svgEl('text', { x: 18, y: Y(r === 6 ? 1071 : r * 200 - 100) + 8, 'text-anchor': 'middle', class: 'gl' }, refs.grid); t.textContent = r; }
   for (const L of LINES) svgEl('polyline', { points: L.map(([x, y]) => `${x},${Y(y)}`).join(' '), fill: 'none', stroke: '#0A0A0A', 'stroke-width': 20, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, refs.plain);
   setMat(state.mat);
+  refs.practice = svgEl('g', {'pointer-events':'none'}, field);
+  refs.trials = svgEl('g', {'pointer-events':'none'}, field);
   refs.objs = svgEl('g', {}, field); refs.objEls = [];
   refs.hints = svgEl('g', { 'pointer-events': 'none' }, field); refs.hintKey = '';
   refs.trail = svgEl('polyline', { fill: 'none', stroke: '#8FE3B0', 'stroke-width': 6, 'stroke-opacity': .7, 'stroke-dasharray': '2 10', 'stroke-linecap': 'round', 'pointer-events': 'none' }, field);
   refs.seen = svgEl('g', { 'pointer-events': 'none' }, field); refs.seenPaths = {};
   refs.beam = svgEl('line',{ stroke: 'rgba(143,227,176,.6)', 'stroke-width': 4, 'pointer-events': 'none' }, field);
   refs.robot = svgEl('g', { 'pointer-events': 'none' }, field);
+  refs.spot = svgEl('circle', {r:SPOT_R,fill:'#C2329E55',stroke:'#C2329E','stroke-width':.6,'pointer-events':'none'}, field);
+
+  svgEl('title',{},refs.spot).textContent='Approximate sensing footprint: 8 mm diameter. The larger robot circle is a sensor locator, not its sensing area.';
   const style = svgEl('style', {}, field);
   style.textContent = '.gl{font:600 26px "JetBrains Mono",monospace;fill:rgba(255,255,255,.55)} .model-l{font:700 28px "JetBrains Mono",monospace;fill:#3B2F1E} .dock-l{font:700 32px "JetBrains Mono",monospace;fill:#FFE3A6} .dock-s{font:700 20px "JetBrains Mono",monospace;fill:#FFFFFF} .piece{cursor:grab;touch-action:none} .piece-l{font:700 28px "JetBrains Mono",monospace;fill:#2A1747} .dial-l{font:700 22px "JetBrains Mono",monospace;fill:#1A1A1A} .arm-l{font:700 20px "JetBrains Mono",monospace;fill:#fff} .hint-l{font:700 22px "JetBrains Mono",monospace}';
 }
@@ -208,6 +220,7 @@ function syncObjects() {
 }
 
 function drawField() {
+  drawTraining();
   robot3D.update();
   field3D?.update();
   const p = sim.pose, s = sim.sens;
@@ -231,6 +244,12 @@ function drawField() {
 
   $('r-cport').textContent = state.cfg.colorPort; $('r-dport').textContent = state.cfg.distPort;
   $('r-swatch').style.background = SWATCH[s.color] || '#5B7066'; $('r-color').textContent = s.color;
+  $('r-reflect').textContent = `${s.reflect.toFixed(0)}%`;
+  refs.spot.setAttribute('cx',s.spot[0]); refs.spot.setAttribute('cy',Y(s.spot[1]));
+  $('pause').disabled=!(sim.running||sim.matchOn)||trialBusy; $('pause').textContent=sim.paused?'Resume':'Pause';
+  $('single-step').disabled=((sim.running||sim.matchOn)&&!sim.paused)||trialBusy;
+  $('debug-state').textContent=`${sim.paused?'Paused':sim.running?'Running':'Idle'} · simulation ${sim.t.toFixed(3)} s · active stacks ${sim.threads.filter(t=>!t.done&&!t.stopped).length} · motor ${sim.physicalPair[0]} ${(sim.arms[sim.physicalPair[0]]||0).toFixed(1)}° / ${sim.physicalPair[1]} ${(sim.arms[sim.physicalPair[1]]||0).toFixed(1)}° · heading ${sim.pose.h.toFixed(1)}°`;
+  $('debug-trace').textContent=sim.trace.slice(-5).map(t=>`Stack ${t.stack}: ${t.type}${typeof t.outcome==='boolean'?' → '+t.outcome:''} @ ${t.time.toFixed(3)}s`).join(' · ');
   $('r-dist').textContent = s.dist === null ? 'none (over 200 cm)' : s.dist.toFixed(1) + ' cm';
   $('r-yaw').textContent = Math.round(s.yaw) + '°';
   $('r-arms').textContent = Math.round(sim.arms.E) + '° · ' + Math.round(sim.arms.F) + '°';
@@ -434,7 +453,7 @@ function showProgram(program) {
       read: () => window.Blockly.serialization.workspaces.save(ws),
       write: json => { registerNames(program); window.Blockly.serialization.workspaces.load(json, ws); }
     } : null);
-    libraryUI?.clearSelection();
+    if (!training?.active) libraryUI?.clearSelection();
     recoveryError = null;
     state.program = candidate; state.sounds = candidate.sounds || {};
     if (ws) syncProgram(); else save();
@@ -496,7 +515,7 @@ $('tab-code').addEventListener('click', (e) => {
 // Copy what the simulated models did onto the score sheet.
 let lastMission = '';
 function syncMission() {
-  if (!state.autoScore) return;
+  if (training?.active || !state.autoScore) return;
   const now = JSON.stringify(AUTO_KEYS.map(k => sim.mission[k]));
   if (now === lastMission) return;
   lastMission = now;
@@ -855,9 +874,14 @@ document.addEventListener('pointercancel', endSwipe);
 
 // Read the blocks right before running/exporting, so the newest edits always count.
 const latestProgram = () => workspaceSession.executable();
-$('run').onclick = () => { try { const p = latestProgram(); sim.run(p); const a = audioCtx(); if (a && a.state === 'suspended') a.resume(); drawField(); } catch (err) { showMsg('Cannot run: ' + err.message); } };
-$('stop').onclick = () => { if (sim.stop()) { state.tokens = Math.max(0, state.tokens - 1); save(); renderScore(); } drawField(); };
-$('reset').onclick = () => { sim.reset(); sim.log('Robot back at the start position.'); drawField(); };
+$('run').onclick = () => { try { cancelTrials(); const p = latestProgram(); sim.run(p); beginTrainingRun(); const a = audioCtx(); if (a && a.state === 'suspended') a.resume(); drawField(); } catch (err) { showMsg('Cannot run: ' + err.message); } };
+$('pause').onclick=()=>{sim.pause(!sim.paused);drawField();};
+$('single-step').onclick=()=>{try{
+  if(!sim.running&&!sim.matchOn){cancelTrials();sim.run(latestProgram());sim.pause();beginTrainingRun();}
+  sim.singleStep();checkTrainingRun();drawField();
+}catch(err){showMsg('Cannot step: '+err.message);}};
+$('stop').onclick = () => { cancelTrials(); finishTrainingRun('interrupted'); if (sim.stop()) { state.tokens = Math.max(0, state.tokens - 1); save(); renderScore(); } drawField(); };
+$('reset').onclick = () => { cancelTrials(); finishTrainingRun('interrupted'); sim.reset(); sim.log('Robot back at the start position.'); drawField(); };
 $('match').onclick = () => {
   if (sim.matchOn) sim.endMatch();
   else { sim.startMatch(); state.tokens = 6; save(); renderScore(); }
@@ -878,7 +902,7 @@ let drag = null, dragged = false, tapped = null;
 field.addEventListener('pointerdown', (e) => {
   const pt = toMm(e);
   tapped = sim.objects.slice().reverse().find(o => !o.loose && inside(pt, o)) || null;
-  if (sim.running) return;
+  if (sim.running || training?.active) return;
   const o = sim.objects.slice().reverse().find(o => o.loose && inside(pt, o));
   if (!o) return;
   tapped = null;
@@ -900,7 +924,7 @@ field.addEventListener('pointercancel', endDrag);
 field.addEventListener('click', (e) => {
   if (dragged) { dragged = false; return; }
   if (tapped) { showMissionCard(tapped); tapped = null; return; }
-  if (sim.running) return;
+  if (sim.running || training?.active) return;
   const [x, y] = toMm(e);
   setStart({ x: Math.round(x), y: Math.round(y) });
 });
@@ -948,14 +972,16 @@ function showMsg(text, link) {
 
 $('file').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
-  try { await openProject(await file.arrayBuffer(), file.name); }
+  const generation=projectGeneration;
+  try { await openProject(await file.arrayBuffer(), file.name,generation); }
   catch (err) { showMsg(`Could not import “${file.name}”: ${err.message}`); }
 });
 
 // Load a SPIKE project file into the editor and set up the robot's ports from it.
-async function openProject(buf, name) {
+async function openProject(buf, name, generation = projectGeneration) {
   try {
     const res = await importProject(buf);
+    if (training?.active || generation!==projectGeneration) throw Error('Import canceled because the workspace mode changed.');
     showProgram(res.program);
     Object.assign(state.cfg, res.cfg);
     save();
@@ -1017,10 +1043,11 @@ function ghRenderList() {
     const sz = document.createElement('span'); sz.className = 'fine'; sz.textContent = Math.max(1, Math.round(f.size / 1024)) + ' KB';
     b.append(n, sz);
     b.onclick = async () => {
+      const generation=projectGeneration;
       ghStatus(`Opening ${f.name}…`);
       try {
         const buf = await fetchProject(parseRepo(gh.repo), f, gh.token, fetch);
-        if (await openProject(buf, f.name)) { $('gh').close(); ghStatus(''); }
+        if (await openProject(buf, f.name,generation)) { $('gh').close(); ghStatus(''); }
         else ghStatus($('msg').textContent, true);
       } catch (err) { ghStatus(err.message, true); }
     };
@@ -1121,9 +1148,11 @@ async function shareRobot() {
 }
 
 async function openSharedRobot(code) {
+  const generation=projectGeneration;
   history.replaceState(null, '', location.pathname + location.search);
   let robot;
   try { robot = await decodeRobot(code); } catch (err) { showMsg(err.message); return; }
+  if(training?.active || generation!==projectGeneration)return;
   if (!confirm('Load the shared robot? It replaces the robot setup on this device. Your program stays.')) return;
   sim.stop();
   Object.assign(state.cfg, normalizeConfig(robot));
@@ -1133,6 +1162,8 @@ async function openSharedRobot(code) {
 
 // Open a program from a share link (on load, or when a link is pasted into this tab).
 async function openShared() {
+  if (training?.active) { showMsg('Return to your main program before opening a shared link.'); return; }
+  const generation=projectGeneration;
   const robotCode = robotCodeFromHash(location.hash);
   if (robotCode) { await openSharedRobot(robotCode); return; }
   const code = codeFromHash(location.hash);
@@ -1141,6 +1172,7 @@ async function openShared() {
   let data;
   try { data = await decodeShare(code); } catch (err) { showMsg(err.message); return; }
   if ((recoveryError || (ws ? ws.getAllBlocks(false).length > 0 : countBlocks(state.program) > 0)) && !confirm('Open the shared program? It replaces the program, robot setup and start position here.')) return;
+  if (training?.active || generation!==projectGeneration) return;
   try { showProgram(data.program); } catch (err) { showMsg('Cannot open shared project: ' + err.message); return; }
   sim.stop();
   if (data.cfg) Object.assign(state.cfg, normalizeConfig(data.cfg));
@@ -1152,6 +1184,139 @@ async function openShared() {
 }
 window.addEventListener('hashchange', openShared);
 
+// ---------- isolated practice workspace and bounded reliability experiments ----------
+const PRACTICE_STORE='bioglow-practice-v1';
+const practiceDrafts=(()=>{try{return JSON.parse(localStorage.getItem(PRACTICE_STORE))||{};}catch{return {};}})();
+function setupTraining() {
+  const select=$('training-choice');
+  for(const level of [...new Set(CHALLENGES.map(c=>c.level))]) {
+    const group=document.createElement('optgroup');group.label=level;
+    for(const c of CHALLENGES.filter(c=>c.level===level)){const option=document.createElement('option');option.value=c.id;option.textContent=c.title;group.append(option);}
+    select.append(group);
+  }
+  training=createPracticeSession({
+    capture:()=>({...structuredClone(state),ws:window.Blockly.serialization.workspaces.save(ws)}),
+    makeDraft:id=>{
+      const scratch=new window.Blockly.Workspace();let snapshot;
+      try{window.Blockly.serialization.workspaces.load(programToJson(starterProgram()),scratch);snapshot=window.Blockly.serialization.workspaces.save(scratch);}finally{scratch.dispose();}
+      return {...structuredClone(state),ws:snapshot,cfg:normalizeConfig(),start:{...challenge(id).start},sounds:{},score:{},pieces:[],mat:'plain'};
+    },
+    readDraft:id=>practiceDrafts[id]||null,
+    writeDraft:(id,data)=>{practiceDrafts[id]=data;localStorage.setItem(PRACTICE_STORE,JSON.stringify(practiceDrafts));},
+    install:(data,id)=>{
+      loadingWs=true;
+      try {
+        installSavedWorkspace({version:1,workspace:data.ws,start:data.start},window.Blockly,ws);
+        sim.stop();sim.matchOn=false;
+        Object.assign(state,data);sim.cfg=state.cfg;sim.start=state.start;sim.pieces=state.pieces;sim.docks=state.docks;sim.approach=state.approach;
+        if(id)configureChallenge(sim,challenge(id));else{sim.scene=null;sim.variation=null;sim.reset();}
+        sim.onStep=dt=>{if(trainingRun)observeChallenge(trainingRun.challenge,sim,trainingRun.observed,dt);};
+        lastMission=JSON.stringify(AUTO_KEYS.map(k=>sim.mission[k]));
+        setMat(state.mat);renderStart();renderRobot();renderScore();renderDocks();
+      } finally{loadingWs=false;}
+    },
+    changed:id=>{
+      projectGeneration++;cancelTrials();trainingRun=null;hintCount=0;trialPaths=[];
+      $('training-active').hidden=!id;$('training-leave').hidden=!id;
+      $('training-enter').textContent=id?'Switch challenge':'Open challenge';
+      if(id){select.value=id;$('training-goal').textContent=challenge(id).goal;}
+      $('training-hints').replaceChildren();$('training-hint').disabled=false;
+      $('training-feedback').textContent='Build a program, then press Run.';
+      $('trial-results').replaceChildren();$('trial-status').textContent='Choose conditions; zero values repeat the nominal scene.';
+      // The shared-library selection remains attached to the protected main draft.
+      for(const key of ['library-open','library-save','library-copy','library-history','file','gh-open','share','match','sx','sy','sh']) {
+        const el=$(key);if(id){if(!('practiceDisabled' in el.dataset))el.dataset.practiceDisabled=String(el.disabled);el.disabled=true;}
+        else if('practiceDisabled' in el.dataset){el.disabled=el.dataset.practiceDisabled==='true';delete el.dataset.practiceDisabled;}
+      }
+      $('tab-robot').inert=!!id;$('tab-field').inert=!!id;$('tab-score').inert=!!id;$('side').inert=!!id;
+      $('field-3d').hidden=!!id;$('mission-card').hidden=true;
+      document.querySelector('[data-tab=code]').click();
+      refs.hintKey='';drawField();
+      if(!id)save();
+    }
+  });
+  $('training-enter').onclick=()=>{try{
+    if(recoveryError)throw Error('Recover or explicitly replace the blocked main workspace before entering practice.');
+    if(document.querySelector('dialog[open]'))throw Error('Close the open dialog first.');
+    training.enter(select.value);
+  }catch(e){showMsg(e.message);}};
+  $('training-leave').onclick=()=>{try{training.leave();}catch(e){showMsg('Could not restore your main workspace: '+e.message);}};
+  $('training-hint').onclick=()=>{if(!training.active)return;const hints=challenge(training.active).hints;if(hintCount<hints.length){const li=document.createElement('li');li.textContent=hints[hintCount++];$('training-hints').append(li);}$('training-hint').disabled=hintCount===hints.length;};
+  $('trial-scenario').onchange=()=>{const ideal=$('trial-scenario').value==='ideal';document.querySelectorAll('[data-variation]').forEach(el=>el.disabled=ideal);cancelTrials();trialPaths=[];$('trial-results').replaceChildren();$('trial-status').textContent='Scenario changed. Run a fresh batch.';drawField();};
+  $('trial-scenario').onchange();
+  for(const el of document.querySelectorAll('[data-variation],#trial-seed'))el.addEventListener('input',()=>{cancelTrials();trialPaths=[];$('trial-results').replaceChildren();$('trial-status').textContent='Conditions changed. Run a fresh batch.';drawField();});
+  $('trial-run').onclick=startTrials;$('trial-cancel').onclick=()=>cancelTrials(true);
+  ws?.addChangeListener(e=>{if(!e.isUiEvent&&!loadingWs&&training.active){cancelTrials();trialPaths=[];$('trial-results').replaceChildren();$('trial-status').textContent='Program changed. Run a fresh batch for this draft.';if(trainingRun){finishTrainingRun('interrupted');sim.stop();}drawField();}});
+}
+function beginTrainingRun(){
+  trialPaths=[];if(training?.active){$('trial-results').replaceChildren();$('trial-status').textContent='Single run started. Run a fresh batch when ready.';}
+  if(!training?.active)return;
+  const c=challenge(training.active);trainingRun={challenge:c,observed:{samples:0,onLine:0,collision:false}};
+  $('training-feedback').textContent='Running… Pause to inspect blocks, sensor readings and conditions.';
+}
+function finishTrainingRun(reason){
+  if(!trainingRun)return;
+  const result=evaluateChallenge(trainingRun.challenge,sim,trainingRun.observed,reason);
+  $('training-feedback').textContent=(result.success?'Goal reached. ':'Try again. ')+result.feedback;
+  trainingRun=null;
+}
+function checkTrainingRun(){
+  if(!trainingRun)return;
+  if(sim.running && evaluateChallenge(trainingRun.challenge,sim,trainingRun.observed).success)sim.finish('Challenge complete: stopped with idle event listeners.');
+  if(sim.t>=trainingRun.challenge.limit&&sim.running){finishTrainingRun('timeout');sim.stop();}
+  else if(!sim.running)finishTrainingRun('finished');
+}
+function cancelTrials(report=false){
+  trialGeneration++;const was=trialBusy;trialBusy=false;
+  if($('trial-run')){$('trial-run').disabled=false;$('trial-cancel').disabled=true;}
+  if(was||report){$('trial-status').textContent='Trials canceled. Partial paths are not a 20-run success rate.';trialPaths=[];$('trial-results').replaceChildren();}
+}
+async function startTrials(){
+  if(!training?.active||trialBusy)return;
+  try {
+    const program=latestProgram(),cfg=structuredClone(state.cfg),id=training.active;
+    const seed=Number($('trial-seed').value),variation=Object.fromEntries([...document.querySelectorAll('[data-variation]')].map(el=>[el.dataset.variation,$('trial-scenario').value==='ideal'?0:Number(el.value)]));
+    const iterator=reliabilityTrials({id,program,cfg,seed,variation});
+    // Validate before interrupting the foreground run or changing any result.
+    let next=iterator.next();
+    sim.stop();trainingRun=null;trialPaths=[];$('trial-results').replaceChildren();
+    const generation=++trialGeneration;trialBusy=true;$('trial-run').disabled=true;$('trial-cancel').disabled=false;
+    const results=[];
+    while(!next.done){
+      if(generation!==trialGeneration||training.active!==id)return;
+      const item=next.value;
+      if(item.kind==='result'){
+        results.push(item);trialPaths.push(item);const li=document.createElement('li');li.textContent=`Run ${item.index+1}: ${item.success?'pass':'not yet'} — ${item.feedback}`;$('trial-results').append(li);
+      }
+      $('trial-status').textContent=`Completed ${results.length}/20 · seed ${seed}. Running separately from your program.`;
+      drawField();await new Promise(resolve=>setTimeout(resolve,0));
+      if(generation!==trialGeneration||training.active!==id)return;
+      next=iterator.next();
+    }
+    trialBusy=false;$('trial-run').disabled=false;$('trial-cancel').disabled=true;
+    const passed=results.filter(r=>r.success).length;
+    $('trial-status').textContent=`${passed}/20 passed (${passed*5}%) in this simulated scene. Seed ${seed}. Conditions: ${JSON.stringify(variation)}. Green paths pass; orange paths miss. Not an estimate of real mission reliability.`;
+    drawField();
+  }catch(e){cancelTrials();$('trial-status').textContent=e.message;}
+}
+function drawTraining(){
+  if(!refs.practice)return;
+  const id=training?.active,key=id||'';
+  refs.photo.style.visibility=id?'hidden':'';refs.plain.style.visibility=id?'hidden':'';refs.hints.style.visibility=id?'hidden':'';
+  if(refs.practice.dataset.scene!==key){
+    refs.practice.dataset.scene=key;refs.practice.replaceChildren();
+    if(id){
+      const c=challenge(id);svgEl('rect',{x:0,y:0,width:FW,height:FH,fill:'#FAFAF3'},refs.practice);
+      if(c.line)svgEl('polyline',{points:c.line.map(([x,y])=>`${x},${Y(y)}`).join(' '),stroke:'#111','stroke-width':c.width,fill:'none','stroke-linejoin':'round','stroke-linecap':'round'},refs.practice);
+      if(c.target)svgEl('circle',{cx:c.target[0],cy:Y(c.target[1]),r:c.id==='heading'?50:c.id==='follow'?50:20,fill:'#8FE3B055',stroke:'#247C52','stroke-width':4},refs.practice);
+      svgEl('circle',{cx:c.start.x,cy:Y(c.start.y),r:8,fill:'#1E6FD9'},refs.practice);
+      const label=svgEl('text',{x:60,y:65,fill:'#203c32','font-size':32},refs.practice);label.textContent='PRACTICE · '+c.title;
+    }
+  }
+  const pathKey=trialGeneration+':'+trialPaths.map(r=>r.index).join();
+  if(refs.trials.dataset.paths!==pathKey){refs.trials.dataset.paths=pathKey;refs.trials.replaceChildren();for(const r of trialPaths)svgEl('polyline',{points:r.path.map(([x,y])=>`${x.toFixed(1)},${Y(y).toFixed(1)}`).join(' '),stroke:r.success?'#168347':'#B85719','stroke-width':4,'stroke-opacity':.45,fill:'none'},refs.trials);}
+}
+
 // ---------- loop ----------
 
 // Physics runs on a timer (not animation frames) so slow or throttled drawing doesn't slow the robot.
@@ -1161,7 +1326,7 @@ setInterval(() => {
   const now = performance.now(); const dt = Math.min(0.25, (now - last) / 1000); last = now;
   if (sim.running || sim.matchOn) {
     const wasMatch = sim.matchOn;
-    sim.advance(dt * state.scale); dirty = true;
+    sim.advance(dt * state.scale); checkTrainingRun(); dirty = true;
     if (wasMatch && !sim.matchOn) renderLog();
   }
   if (dirty && now - lastDraw > 250) draw(); // animation frames starved: draw from here
@@ -1170,7 +1335,7 @@ let lastDraw = 0;
 function draw() { dirty = false; lastDraw = performance.now(); drawField(); }
 function frame() { if (dirty) draw(); requestAnimationFrame(frame); }
 
-buildField(); renderStart(); renderDocks(); initCode(); renderScore(); renderRobot(); renderLog(); drawField();
+buildField(); renderStart(); renderDocks(); initCode(); setupTraining(); renderScore(); renderRobot(); renderLog(); drawField();
 openShared();
 requestAnimationFrame(frame);
 // Save the latest blocks when the page is hidden or closed.
