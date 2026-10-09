@@ -80,6 +80,7 @@ export function setupLibrary({capture,restore,validateCandidate,message,provider
     $('library-save-fields').hidden=!['save','copy'].includes(mode);
     $('library-submit').hidden=!['save','copy'].includes(mode);
     $('library-title').textContent=mode==='list'?'Shared programs':mode==='history'?'Revision history':mode==='copy'?'Save a copy':'Save shared program';
+    $('library-name').readOnly=mode==='save';
     $('library-name').value=selected?selected.meta.name+(mode==='copy'?' copy':''):'';
     $('library-nickname').value='';status('');dialog.showModal();
     if(mode==='list')showList();else if(mode==='history')showHistory();
